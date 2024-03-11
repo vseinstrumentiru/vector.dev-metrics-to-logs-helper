@@ -1,0 +1,417 @@
+{
+    "$id": "https://github.com/vseinstrumentiru/devopsconf2024/blob/main/resentation-from-efk-to-vector-and-clickhouse/vector-metrics-refactored/schema/vectordev-metrics-catalog.json",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$ref": "#/definitions/Schema",
+    "definitions": {
+        "Schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "metrics_catalog": {
+                    "$ref": "#/definitions/MetricsCatalog"
+                }
+            },
+            "required": [
+                "metrics_catalog"
+            ],
+            "minProperties": 1,
+            "title": "Vector.dev Metric Catalog Config Schema (by Vitech.team)",
+            "description": "Схема для валидации структуры файла каталога метрик"
+        },
+        "MetricsCatalog": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "defaults": {
+                    "$ref": "#/definitions/Defaults"
+                },
+                "exclude_events": {
+                    "$ref": "#/definitions/ExcludeEvents"
+                },
+                "metrics": {
+                    "$ref": "#/definitions/Metrics"
+                }
+            },
+            "required": [
+                "metrics"
+            ],
+            "title": "Каталог метрик",
+            "description": "Содержит описания метрик для генерации трансформов Vector.dev, отвечающих за преобразование логов доступа http в метрики"
+        },
+        "Defaults": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "label_logfield_mapping": {
+                    "$ref": "#/definitions/LabelLogfieldMapping",
+                    "default": "&default_label_logfield_mapping"
+                }
+            },
+            "required": [
+                "label_logfield_mapping"
+            ],
+            "title": "Значения по умолчанию для использования в спецификациях метрик"
+        },
+        "ExcludeEvents": {
+            "type": "array",
+            "minItems": 0,
+            "items": {
+                "$ref": "#/definitions/EventSelector"
+            },
+            "title": "Фильтры для исключения событий",
+            "description": "Фильтры отбора событий, которые будут исключены из метрик. Указывается имя поля события и условие совпадения. Все фильтры вычисляются отдельно (или)"
+        },
+        "LabelLogfieldMapping": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "http request url path",
+                    "default": "http_path"
+                },
+                "method": {
+                    "type": "string",
+                    "description": "http request method",
+                    "default": "http_method"
+                },
+                "status": {
+                    "type": "string",
+                    "description": "http response status code",
+                    "default": "http_status"
+                },
+                "cluster_name": {
+                    "type": "string",
+                    "description": "source cluster name",
+                    "default": "cluster_name"
+                },
+                "container_name": {
+                    "type": "string",
+                    "description": "kubernetes container name",
+                    "default": "container_name"
+                },
+                "service_name": {
+                    "type": "string",
+                    "description": "service/application name (identifier)",
+                    "default": "service_name"
+                }
+            },
+            "patternProperties": {
+                "^.*$": {
+                    "type": "string",
+                    "default": "value"
+                }
+            },
+            "minProperties": 1,
+            "title": "Сопоставление значений для меток метрики",
+            "description": "Настройки из каких полей события лога в vector.dev брать значение для подстановки значения в указанную метку. Ключ - имя метки в метрике, значение - имя поля в событии лога vector.dev (см. transform.http_accesslog-k8s)",
+            "default": {
+                "path": "http_path",
+                "method": "http_method",
+                "status": "http_status",
+                "cluster_name": " cluster_name",
+                "container_name": " container_name",
+                "service_name": " service_name"
+            },
+            "examples": [
+                "path: http_path",
+                "method: http_method",
+                "status: http_status",
+                "cluster_name: cluster_name",
+                "container_name: container_name",
+                "service_name: service_name"
+            ]
+        },
+        "Metrics": {
+            "type": "object",
+            "properties": {
+                "vi_namespace_name_example": {
+                    "$ref": "#/definitions/MetricNamespace"
+                }
+            },
+            "patternProperties": {
+                "^vi_.+$": {
+                    "$ref": "#/definitions/MetricNamespace"
+                }
+            },
+            "minProperties": 1,
+            "additionalProperties": false,
+            "title": "Спецификации собираемых метрик",
+            "description": "Ключ - имя namespace для метрики (например, vi_http), значение - объект названия и спецификации метрик",
+            "default": {
+                "vi_metric_namespace_name_example": {}
+            }
+        },
+        "MetricNamespace": {
+            "type": "object",
+            "properties": {
+                "metric_definition_example": {
+                    "$ref": "#/definitions/MetricDefinition"
+                }
+            },
+            "patternProperties": {
+                "[a-zA-Z_][a-zA-Z0-9_]*": {
+                    "$ref": "#/definitions/MetricDefinition"
+                }
+            },
+            "minProperties": 1,
+            "additionalProperties": false,
+            "title": "Namespace для метрики",
+            "description": "Пространство имен (префикс) метрики в Prometheus, содержит спецификации метрик. Имя должно начинаться с приcтавки 'vi_' (пример vi_http)",
+            "examples": [
+                "vi_http",
+                "vi_mars",
+                "vi_wtis"
+            ]
+        },
+        "MetricDefinition": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+                "metric_type": {
+                    "type": "string",
+                    "enum": [
+                        "counter",
+                        "histogram",
+                        "gauge"
+                    ]
+                },
+                "group_by_logfield": {
+                    "type": "string",
+                    "description": "Имя поля лога в vector.dev по которому будет групировка событий при подсчете метрики",
+                    "default": "logfield_name_example",
+                    "examples": [
+                        "http_status",
+                        "http_path"
+                    ]
+                },
+                "label_logfield_mapping": {
+                    "$ref": "#/definitions/LabelLogfieldMapping"
+                },
+                "event_selectors": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/EventSelector"
+                    },
+                    "description": "Фильтры отбора событий, которые попадут в эту метрику"
+                }
+            },
+            "required": [
+                "event_selectors",
+                "group_by_logfield",
+                "label_logfield_mapping",
+                "metric_type"
+            ],
+            "title": "Описание метрики",
+            "description": "Ключ - имя метрики без namespace, значение - объект специцикация метрки",
+            "examples": [
+                "requests_total",
+                "request_duration_seconds",
+                "queue_length"
+            ]
+        },
+        "EventSelector": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "selector": {
+                    "type": "string",
+                    "description": "Селектор событий с именем (имя не обязательно)",
+                    "default": "Задайте описательное имя для этой группы событий"
+                },
+                "filter": {
+                    "$ref": "#/definitions/Filter",
+                    "description": "Условия отбора событий, накладываются на имена полей лога",
+                    "default": {
+                        "http_path": {
+                            "re": "^/product/(\\d+)$",
+                            "label_override": "/product/:id"
+                        },
+                        "namespace": {
+                            "eq": "service_name-production"
+                        },
+                        "service_name": {
+                            "re": "^service(?:-canary)?$"
+                        }
+                    }
+                }
+            },
+            "required": [
+                "filter",
+                "selector"
+            ],
+            "title": "Спецификация событий для подсчета в метрике",
+            "description": "Указывает какие собыития собирать и считать в этой метрике. В одну метрику могут попадать события из логов разных сервисов"
+        },
+        "Filter": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+                "example_field_name": {
+                    "$ref": "#/definitions/FilerFieldCondition"
+                }
+            },
+            "patternProperties": {
+                "[a-zA-Z_][a-zA-Z0-9_]*": {
+                    "$ref": "#/definitions/FilerFieldCondition"
+                }
+            },
+            "title": "Набор условий по полям логов для отбора метрики",
+            "description": "Содержит условия отбора, которым должны соответствовать значения полей лога, чтобы эта запись была отобрана для подсчета в метрике. Названия полей см. vector.dev в трасформе transform.http_accesslog-k8s"
+        },
+        "FilerFieldCondition": {
+            "minProperties": 1,
+            "oneOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "eq": {
+                            "$ref": "#/definitions/Eq"
+                        }
+                    },
+                    "required": [
+                        "eq"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "neq": {
+                            "$ref": "#/definitions/Neq"
+                        }
+                    },
+                    "required": [
+                        "neq"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "re": {
+                            "$ref": "#/definitions/Re"
+                        },
+                        "label_override": {
+                            "$ref": "#/definitions/LabelOverrideValue"
+                        }
+                    },
+                    "required": [
+                        "re"
+                    ],
+                    "dependentRequired": {
+                        "label_override": [
+                            "re"
+                        ]
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "nre": {
+                            "$ref": "#/definitions/Nre"
+                        },
+                        "label_override": {
+                            "$ref": "#/definitions/LabelOverrideValue"
+                        }
+                    },
+                    "required": [
+                        "nre"
+                    ],
+                    "dependentRequired": {
+                        "label_override": [
+                            "nre"
+                        ]
+                    }
+                }
+            ],
+            "title": "Имя поля лога и условия для него",
+            "description": "Ключ - имя поля лога в условии отбора (например, http_path), значение - объект спецификация условия (условия eq, neq, re, nre)",
+            "default": {
+                "re": "^/page/(.*)$",
+                "label_override": "/page/:name #optional"
+            },
+            "examples": [
+                "http_status: ",
+                "http_path: ",
+                "namespace: "
+            ]
+        },
+        "Eq": {
+            "$ref": "#/definitions/StringValue",
+            "title": "Равно строке",
+            "description": "Условие проверки совпадения строк",
+            "examples": [
+                "eq: \"/widget\"",
+                "eq: \"/user/login\""
+            ]
+        },
+        "Neq": {
+            "$ref": "#/definitions/StringValue",
+            "title": "Не равно строке",
+            "description": "Условие проверки несовпадения строк",
+            "examples": [
+                "neq: \"/widget\"",
+                "neq: \"/user/login\""
+            ]
+        },
+        "Re": {
+            "$ref": "#/definitions/RegexpValue",
+            "title": "Соответствие regexp",
+            "description": "Условие проверки соответствия строки регулярному выражению",
+            "examples": [
+                "re: \"^/pages/(\\w+)\"",
+                "re: \"/pages/:name\"",
+                "re: \"^/articles/(?:<name>?(\\w+))\""
+            ]
+        },
+        "Nre": {
+            "$ref": "#/definitions/RegexpValue",
+            "title": "Несоответствие regexp",
+            "description": "Условие проверки несоответствия строки регулярному выражению",
+            "examples": [
+                "re: \"^/pages/(\\w+)\"",
+                "re: \"^/pages/:name$\"",
+                "re: \"^/articles/(?:<name>?(\\w+))\""
+            ]
+        },
+        "StringValue": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Строка",
+            "default": "example_string"
+        },
+        "RegexpValue": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Строка-регулярное выражение",
+            "description": "Регулярное выражение на значение поля",
+            "default": "'^example_rexexp$'",
+            "examples": [
+                "^/pages/(\\w+)",
+                "/pages/:name",
+                "^/articles/(?:<name>?(\\w+))"
+            ]
+        },
+        "LabelOverrideValue": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Переопределенное значение метки для метрики",
+            "description": "Новое значение метки, переопределит текущее полученное из поля лога. Помогает снизить кардинальность при большом числе значиний метки. Например, значения http_path в логе соответствуют /product/(?:<id>\\d+), тогда метрика будет иметь много разных вариантов метки path (/product/1223, /product/8821). Мы можем сделать значение неизменяемым, указав тут постоянную строку /product/:name, тогда в метрике метка path будет всегда иметь одинаковое значение /product/:name",
+            "default": "new_label_value",
+            "examples": [
+                "/products/:id",
+                "/categories/",
+                "/articles/:name"
+            ]
+        },
+        "nonEmptyString": {
+            "type": "string",
+            "minLength": 1
+        }
+    }
+}

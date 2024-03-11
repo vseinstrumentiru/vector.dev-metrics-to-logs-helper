@@ -1,0 +1,25 @@
+# Пример записи лога получаемого из приложения nginx
+
+{
+    "time": "2023-02-13T10:23:07.987000123+03:00",
+    "request_id": "6a432b1e521b042789c1e984aee21127",
+    "user": "",
+    "address": "101.11.22.33",
+    "bytes_received": 4799,
+    "bytes_sent": 14720,
+    "protocol": "HTTP/1.1",
+    "scheme": "http",
+    "method": "GET",
+    "host": "internal-products",
+    "path": "/product/122",
+    "request_uri": "/product/122?full=true",
+    "request_query": "?full=true",
+    "referrer": "https://www.yandex.ru/search",
+    "user_agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0",
+    "request_time": 0.3,
+    "status": 200,
+    "upstream_addr": "127.0.0.1:4000",
+    "upstream_bytes_received": 14693,
+    "upstream_response_time": 0.217,
+    "upstream_status": "200"
+}

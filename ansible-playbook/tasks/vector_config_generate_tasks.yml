@@ -1,0 +1,43 @@
+---
+- name: Remove generated vector configs dir
+  ansible.builtin.file:
+    state: absent
+    path: "{{ playbook_dir }}/../.generated/vector_configs/"
+  delegate_to: localhost
+
+- name: Find user-defined configs
+  find:
+    path: "{{ vector_user_configs_path }}"
+    recurse: yes
+    patterns: "*.toml.j2"
+  when: vector_user_configs_paths is defined
+  become: false
+  delegate_to: localhost
+  register: custom_configs
+  loop_control:
+    loop_var: vector_user_configs_path
+  loop: "{{ vector_user_configs_paths }}"
+
+- name: Merging a list of files
+  set_fact:
+    custom_configs: "{{ custom_configs.results | map(attribute='files') | flatten }}"
+
+- name: Create generated vector configs dir
+  ansible.builtin.file:
+    state: directory
+    path: "{{ playbook_dir }}/.generated/vector_configs/"
+    mode: 0777
+  delegate_to: localhost
+
+- name: Generate vector configs
+  become: false
+  template:
+    src: "{{ item.path }}"
+    dest: "{{ vector_config_dir }}/\
+      {{ (item.path | dirname).split('/')[-2] }}_\
+      {{ (item.path | dirname).split('/')[-1] }}_\
+      {{ item.path | basename | replace('.j2', '') | replace ('/', '_') }}"
+    mode: "0666"
+  loop: "{{ custom_configs }}"
+  when: custom_configs is defined
+  delegate_to: localhost

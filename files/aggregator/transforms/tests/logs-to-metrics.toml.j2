@@ -1,0 +1,332 @@
+[[tests]]
+  name = "transforms.app_k8s_log_streams: 030.3 http_accesslog-k8s_logs stream works for kubernetes.pod_annotations.\"containers.domain/<CONTAINER_NAME>.log_source\" = http_accesslog"
+
+  [[tests.inputs]]
+    insert_at = "kafka"
+    type = "log"
+
+    [tests.inputs.log_fields]
+      source_type = "kubernetes_logs"
+      stream = "stdout"
+      k8s_service_name = "ox2"
+      "kubernetes.container_name" = "a-container-name"
+      "kubernetes.any_name" = "test::kubernetes_field::value"
+      'kubernetes.pod_annotations."containers.domain/a-container-name.log_source"' = "http_accesslog"
+      message = 'test_message::http_accesslog-k8s_logs::annotated'
+      timestamp = "2021-07-01T13:00:34.227987404Z"
+
+  [[tests.outputs]]
+    extract_from = "app_k8s_log_streams.http_accesslog-k8s_logs"
+
+    [[tests.outputs.conditions]]
+      type = "vrl"
+      source = '''
+        is_log_present = exists(.kubernetes) && exists(.message) && exists(.timestamp)
+        assert!(is_log_present, "no log record")
+        assert_eq!(.message, "test_message::http_accesslog-k8s_logs::annotated", "message field had an unexpected value")
+        assert_eq!(.kubernetes.pod_annotations."containers.domain/a-container-name.log_source", "http_accesslog", "invalid logging source in annotation")
+      '''
+
+
+
+[[tests]]
+  name = "http_accesslog-k8s_prepared: 040.3 it reads base service info, kubernetes (pod, container values)"
+
+  [[tests.inputs]]
+    insert_at = "app_k8s_log_streams"
+    type = "log"
+
+    [tests.inputs.log_fields]
+      source_type = "kubernetes_logs"
+      stream = "stdout"
+
+      # Нужно явно задавать условие, чтобы был выбран нужный поток
+      'kubernetes.pod_annotations."containers.domain/test-app-ws.log_source"' = "http_accesslog"
+
+      "kubernetes.pod_labels.app" = "test_app"
+      k8s_service_name = "ox2-cluster"
+      "kubernetes.pod_name" = "test_app-pod_name-7df5b6b4bc-p9iwq"
+      "kubernetes.pod_labels.\"pod-template-hash\"" = "7df5b6b4bc"
+      "kubernetes.pod_ip" = "10.0.3.42"
+      "kubernetes.pod_namespace" = "test-app-namespace"
+      "kubernetes.container_name" = "test-app-ws"
+      "kubernetes.container_image" = "test-app-ws-image:93dsd2-42"
+      'kubernetes.pod_owner' = "some_user"
+
+      message = '{ "time": "2023-02-13T10:23:07.987000123+03:00","request_id": "6a432b1e521b042789c1e984aee21127","user": "","address": "176.59.54.236","bytes_received": 4799,"bytes_sent": 14720,"protocol": "HTTP/1.1","scheme": "http","method": "GET","host": "vi.ru","path": "/catalog/categories","request_uri": "/catalog/categories?id=26","request_query": "id=26","referrer": "https://www.vi.ru/category/elektricheskie-kleevye-pistolety-171962/?filters=boolean%253Arating%252Ccollection%253Aspecification-236719%253A815890","user_agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0","request_time": 0.3,"status": 200,"upstream_addr": "127.0.0.1:4000","upstream_bytes_received": 14693,"upstream_response_time": 0.217,"upstream_status": "200" }'
+
+
+  [[tests.outputs]]
+    extract_from = "http_accesslog-k8s_prepared"
+
+    [[tests.outputs.conditions]]
+      type = "vrl"
+      source = '''
+        # Этих полей после обработки не дожно быть
+        assert!(!exists(.parsed_accesslog_message.time), "field expected to be deleted")
+        # поля значения которых мы забрали не должны быть доступны
+        assert!(!exists(.kubernetes.pod_name), "field expected to be deleted")
+        assert!(!exists(.kubernetes.pod_ip), "field expected to be deleted")
+        assert!(!exists(.kubernetes.pod_namespace), "field expected to be deleted")
+        assert!(!exists(.k8s_service_name), "field expected to be deleted")
+        assert!(!exists(.kubernetes.pod_name), "field expected to be deleted")
+        assert!(!exists(.kubernetes.container_name), "field expected to be deleted")
+        assert!(!exists(.kubernetes.container_image), "field expected to be deleted")
+
+        # Поля должны быть
+        assert!(exists(.parsed_accesslog_message), "field expected to be present")
+        # Значения полей сверяем
+        # Общие поля
+        assert_eq!(.ts, to_unix_timestamp(t'2023-02-13T10:23:07.987000123+03:00', unit: "milliseconds") )
+
+        assert_eq!(.service_name, "test_app")
+
+        # Kubernetes основыне данные нужные нам
+        assert_eq!(.cluster_name, "ox2-cluster")
+        assert_eq!(.container_name, "test-app-ws")
+        assert_eq!(.container_image, "test-app-ws-image:93dsd2-42")
+        assert_eq!(.namespace, "test-app-namespace")
+        assert_eq!(.pod_name, "test_app-pod_name-7df5b6b4bc-p9iwq")
+        assert_eq!(.deployment, "test_app-pod_name")
+        assert_eq!(.pod_ip, "10.0.3.42")
+      '''
+
+
+[[tests]]
+  name = "http_accesslog-k8s: 040.4 it has base data, container data, http request-response data (port default)"
+
+  [[tests.inputs]]
+    insert_at = "http_accesslog-k8s_prepared"
+    type = "log"
+
+    [tests.inputs.log_fields]
+      # Нужно явно задавать условие, чтобы был выбран нужный поток
+      'kubernetes.pod_annotations."containers.domain/test-app-ws.log_source"' = "http_accesslog"
+      "kubernetes.pod_labels.app" = "test_app"
+      k8s_service_name = "ox2-cluster"
+      "kubernetes.pod_name" = "test_app-pod_name-7df5b6b4bc-p9iwq"
+      "kubernetes.pod_ip" = "10.0.3.42"
+      "kubernetes.pod_namespace" = "test-app-namespace"
+      "kubernetes.container_name" = "test-app-ws"
+      "kubernetes.container_image" = "test-app-ws-image:93dsd2-42"
+      'kubernetes.pod_owner' = "test::pod_owner"
+      "kubernetes.pod_labels.\"pod-template-hash\"" = "7df5b6b4bc"
+
+      message = '{ "time": "2023-02-13T10:23:07+03:00","request_id": "6a432b1e521b042789c1e984aee21127","user": "","address": "176.59.54.236","bytes_received": 4799,"bytes_sent": 14720,"protocol": "HTTP/1.1","scheme": "http","method": "GET","host": "vi.ru","path": "/catalog/categories","request_uri": "/catalog/categories?id=26","request_query": "id=26","referrer": "https://www.vi.ru/category/elektricheskie-kleevye-pistolety-171962/?filters=boolean%253Arating%252Ccollection%253Aspecification-236719%253A815890","user_agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0","request_time": 0.3,"status": 200,"upstream_addr": "127.0.0.1:4000","upstream_bytes_received": 14693,"upstream_response_time": 0.217,"upstream_status": "200" }'
+      ts = 1625144434227 # 2021-07-01T13:00:34.227987404Z UTC
+
+  [[tests.outputs]]
+    extract_from = "http_accesslog-k8s"
+
+    [[tests.outputs.conditions]]
+      type = "vrl"
+      source = '''
+        # Данные Kubernetes не трогаем - идут дальше
+        assert_eq!( .kubernetes.pod_owner, "test::pod_owner", "kubernetes.pod_owner field had an unexpected value" )
+        # проверяем наличие и значения полей добавленных только этим трансформом
+        assert_eq!(.http_method, "GET")
+        assert_eq!(.http_url, "http://vi.ru/catalog/categories?id=26")
+        assert_eq!(.http_scheme, "http")
+        assert_eq!(.http_host, "vi.ru")
+        assert_eq!(.http_port, 80)
+        assert_eq!(.http_path, "/catalog/categories")
+        assert_eq!(.http_query_string, "id=26")
+        assert_eq!(.http_version, "HTTP/1.1")
+        assert_eq!(.http_user_agent, "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0")
+        assert_eq!(.http_referer, "https://www.vi.ru/category/elektricheskie-kleevye-pistolety-171962/?filters=boolean%253Arating%252Ccollection%253Aspecification-236719%253A815890")
+        assert_eq!(.http_request_id, "6a432b1e521b042789c1e984aee21127")
+        assert_eq!(.http_status_code, 200)
+        assert_eq!(.duration_sec, 0.3)
+
+        assert_eq!(.trace_id, "")
+        assert_eq!(.traceparent, "")
+        assert_eq!(.network_client_ip, "176.59.54.236")
+        assert_eq!(.network_bytes_written, 14720)
+        assert_eq!(.upstream_http_status_code, 200)
+        assert_eq!(.upstream_addr, "127.0.0.1:4000")
+        assert_eq!(.upstream_network_bytes_written, 14693)
+        assert_eq!(.upstream_duration_sec, 0.217)
+      '''
+
+
+[[tests]]
+  name = "transforms.metrics-http-accesslog-k8s_exclude_filter: 050.4.2 it allows not excluded logs"
+
+  [[tests.inputs]]
+    insert_at = "http_accesslog-k8s"
+    type = "log"
+
+    [tests.inputs.log_fields]
+      # Данные о сервисе
+      service_name = "shop-service"
+      namespace = "shop-production"
+      # Нужно явно задавать условие, чтобы был выбран нужный поток
+      'kubernetes.pod_annotations."containers.domain/test-app-ws.log_source"' = "http_accesslog"
+      "kubernetes.pod_labels.\"pod-template-hash\"" = "85f59bbfd6"
+      "kubernetes.pod_node_name" = "ox2-kub-prod18"
+      "kubernetes.pod_uid" = "93bde4d0-9731-4785-a80e-cd27ba8ad7c2"
+      "kubernetes.pod_owner" = "test::pod_owner"
+      # Данные контейнера извлеченные ранее
+      cluster_name = "test::ox2-old"
+      container_name = "frontend"
+      container_image = "myregistry/frontend:202109140836-master"
+      pod_name = "shop-service-85f59bbfd6-pcshd"
+      pod_ip = "176.59.54.236"
+      deployment = "shop-service"
+      # Обработанное сообщение лога из transform:http_accesslog-k8s
+      "parsed_accesslog_message.request_id" = "6a432b1e521b042789c1e984aee21127"
+      "parsed_accesslog_message.user" = ""
+      "parsed_accesslog_message.address" = "176.59.54.236"
+      "parsed_accesslog_message.bytes_received"= 4799
+      "parsed_accesslog_message.bytes_sent" = 14720
+      "parsed_accesslog_message.protocol" = "HTTP/1.1"
+      "parsed_accesslog_message.scheme" = "https"
+      "parsed_accesslog_message.method" = "GET"
+      "parsed_accesslog_message.host" = "nn.vi.ru"
+      "parsed_accesslog_message.path" = "/TEST:PATH_NOT_EXISTS/"
+      "parsed_accesslog_message.request_uri" = "/TEST:PATH_NOT_EXISTS/?q=query"
+      "parsed_accesslog_message.request_query" = "q=query"
+      "parsed_accesslog_message.referrer" = "https://www.vi.ru/"
+      "parsed_accesslog_message.user_agent" = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0"
+      "parsed_accesslog_message.request_time" = 0.3
+      "parsed_accesslog_message.status" = 200
+      "parsed_accesslog_message.upstream_addr" = "127.0.0.1:4000"
+      "parsed_accesslog_message.upstream_bytes_received" = 14693
+      "parsed_accesslog_message.upstream_response_time" = 0.217
+      "parsed_accesslog_message.upstream_status" = "200"
+
+  [[tests.outputs]]
+    extract_from = "metrics-http-accesslog-k8s_exclude_filter"
+
+    [[tests.outputs.conditions]]
+      type = "vrl"
+      source = '''
+        assert_eq!(.service_name, "shop-service", "incorrect message dropped")
+      '''
+
+
+[[tests]]
+  name = "transforms.metrics-http-accesslog-k8s_prepared: 050.4 it prepares http_accesslog event (replaces http_path value with label_override in re)"
+
+  [[tests.inputs]]
+    insert_at = "metrics-http-accesslog-k8s_filter"
+    type = "log"
+
+    [tests.inputs.log_fields]
+      service_name = "shop-service"
+      namespace = "shop-production"
+      # Нужно явно задавать условие, чтобы был выбран нужный поток
+      'kubernetes.pod_annotations."containers.domain/test-app-ws.log_source"' = "http_accesslog"
+      "kubernetes.pod_labels.\"pod-template-hash\"" = "85f59bbfd6"
+      "kubernetes.pod_node_name" = "ox2-kub-prod18"
+      "kubernetes.pod_uid" = "93bde4d0-9731-4785-a80e-cd27ba8ad7c2"
+      "kubernetes.pod_owner" = "test::pod_owner"
+      # Данные контейнера извлеченные ранее
+      cluster_name = "test::ox2-old"
+      container_name = "frontend"
+      container_image = "my_containter_registry/frontend:202109140836-master"
+      pod_name = "shop-service-85f59bbfd6-pcshd"
+      pod_ip = "176.59.54.236"
+      deployment = "shop-service"
+      # Обработанное сообщение лога
+      "http_request_id" = "6a432b1e521b042789c1e984aee21128"
+      "http_url" = "https://nn.vi.ru/vendor/makita-1/dreli-2/"
+      "http_scheme" = "https"
+      "http_host" = "nn.vi.ru"
+      "http_port" = 443
+      "http_method" = "GET"
+      "http_path" = "/vendor/makita-1/dreli-2/"
+      "http_query_string" = "activeRegionId=-1&id=26"
+      "http_version" = "HTTP/1.1"
+      "http_referer" = "https://www.vi.ru/"
+      "http_user_agent" = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0"
+      "http_status_code" = 200
+      "duration_sec" = 0.300
+      "traceparent" = ""
+      "trace_id" = ""
+      "network_bytes_written" = 14720
+      "network_client_ip" = "176.59.54.236"
+      "upstream_addr" = "127.0.0.1:4000"
+      "upstream_network_bytes_written" = 14693
+      "upstream_duration_sec" = 0.217
+
+  [[tests.outputs]]
+    extract_from = "metrics-http-accesslog-k8s_prepared"
+
+    [[tests.outputs.conditions]]
+      type = "vrl"
+      source = '''
+        # Должна была произайти замена .http_path для снижения кардинальности метрики по этой метке
+        assert_eq!(.http_path, "/vendor/:name")
+       '''
+
+
+###
+### GENERATED TESTS
+###
+{% for namespace, metrics in metrics_catalog.metrics.items() %}
+  {% for metric_name, metric_conf in metrics.items() %}
+    {%- set _prefix = "_" if namespace =="" else namespace + "_" -%}{#- vector даже при пустом namespace добавит _ в начало, потому мы делаем также -#}
+    {%- set metric_full_name = _prefix  + metric_name -%}
+    {%- set test_name = "transforms.metrics-http-accesslog-k8s: 050.XX check metric labels of " + metric_full_name -%}
+    {%- set _http_host = "nn.vi.ru" + "#test-for-metric: "+ metric_full_name -%}
+[[tests]]
+  name = "{{ test_name }}"
+
+  [[tests.inputs]]
+    insert_at = "metrics-http-accesslog-k8s_prepared"
+    type = "log"
+
+    [tests.inputs.log_fields]
+      service_name = "shop-service"
+      namespace = "shop-production"
+      # Данные Kubernetes (которые еще не изъяты)
+      "kubernetes.pod_labels.\"pod-template-hash\"" = "85f59bbfd6"
+      "kubernetes.pod_node_name" = "ox2-kub-prod18"
+      "kubernetes.pod_uid" = "93bde4d0-9731-4785-a80e-cd27ba8ad7c2"
+      "kubernetes.pod_owner" = "test::pod_owner"
+      # Данные контейнера извлеченные ранее
+      cluster_name = "test::ox2-old"
+      container_name = "frontend"
+      container_image = "my_containter_registry/frontend:202109140836-master"
+      pod_name = "shop-service-85f59bbfd6-pcshd"
+      pod_ip = "176.59.54.236"
+      deployment = "shop-service"
+      # Обработанное сообщение лога
+      "http_request_id" = "6a432b1e521b042789c1e984aee21128"
+      "http_url" = "https://nn.vi.ru/vendor/makita-1/dreli-2/"
+      "http_scheme" = "https"
+      "http_host" = "{{ _http_host }}"
+      "http_port" = 443
+      "http_method" = "GET"
+      "http_path" = "/vendor/makita-1/dreli-2/"
+      "http_query_string" = "activeRegionId=-1&id=26"
+      "http_version" = "HTTP/1.1"
+      "http_referer" = "https://www.vi.ru/"
+      "http_user_agent" = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0"
+      "http_status_code" = 200
+      "duration_sec" = 0.3
+      "traceparent" = ""
+      "trace_id" = ""
+      "network_bytes_written" = 14720
+      "network_client_ip" = "176.59.54.236"
+      "upstream_addr" = "127.0.0.1:4000"
+      "upstream_network_bytes_written" = 14693
+      "upstream_duration_sec" = 0.217
+
+  [[tests.outputs]]
+    extract_from = "metrics-http-accesslog-k8s"
+
+    [[tests.outputs.conditions]]
+      type = "vrl"
+      source = '''
+        assert!(!exists(.tags.pod_name))
+        assert_eq!(.tags.service_name, "shop-service")
+        assert_eq!(.tags.method, "GET")
+        assert_eq!(.tags.path, "/vendor/:name")
+        assert_eq!(.tags.status, "200")
+        assert_eq!(.tags.cluster_name, "test::ox2-old")
+        assert_eq!(.tags.container_name, "frontend")
+       '''
+  {% endfor %}
+{% endfor %}

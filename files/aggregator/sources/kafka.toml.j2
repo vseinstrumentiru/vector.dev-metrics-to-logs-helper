@@ -1,0 +1,20 @@
+[sources.kafka_raw]
+type = "kafka"
+bootstrap_servers = "{{ vector_kafka_bootstrap_servers | join(',') }}"
+group_id = "vector"
+topics = [ "{{ vector_kafka_topics | join('", "') }}" ]
+
+
+[transforms.kafka]
+type = "remap"
+inputs = ["kafka_raw"]
+drop_on_error = true
+source = """
+del(.headers)
+del(.message_key)
+del(.offset)
+del(.partition)
+del(.topic)
+del(.timestamp_end)
+del(._partial)
+"""
