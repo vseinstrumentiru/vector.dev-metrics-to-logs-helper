@@ -1,0 +1,184 @@
+#
+# Трансформ для выделения логов сформированных как нам надо
+# В deployment определении в pod_annotations добавленна аннотация вида containers.domain/container_name.log_source = "http_accesslog"
+# Обрабатываем только логи с такой аннотацией (для обратной совметимости на момент перехода)
+#
+[transforms.app_k8s_log_streams]
+type = "route"
+inputs = ["kafka"]
+
+    [transforms.app_k8s_log_streams.route]
+    http_accesslog-k8s_logs = '''
+        # Выбираем логи в этот поток, если есть аннтотация в поде с значением http_accesslog
+        _container_name = string!(.kubernetes.container_name)
+        _log_source = "unknown"
+        _log_source = get!(value: .kubernetes.pod_annotations, path: ["containers.domain/{{ '{{' }} _container_name {{' }}' }}.log_source"])
+        has_http_accesslog_annotation = _log_source == "http_accesslog"
+
+        # итоговый фильтр для отбора событий
+        has_http_accesslog_annotation
+    '''
+
+#
+# Трансформ для разбора запси лога из json
+#
+[transforms.http_accesslog-k8s_prepared]
+type = "remap"
+inputs = ["app_k8s_log_streams.http_accesslog-k8s_logs"]
+source = '''
+
+.parsed_accesslog_message, err = parse_json(del(.message)) # вот тут данные присланные приложением в формате http_accesslog
+if err != null { # иначе бросаем в лог ошибку и отменяем обработку
+    log("http_accesslog-k8s_prepared failed: .message is an invalid json, err=" + err)
+    abort
+}
+
+# // приводим данные к нужным типам или выставляем значения по умолчанию
+_ts, err = parse_timestamp(del(.parsed_accesslog_message.time), "%+")
+if err != null {
+    _ts = now()
+    log("transforms.base-fields-extracted: .parsed_accesslog_message.time parse failed, err=" + err)
+}
+
+.ts = to_unix_timestamp(_ts, unit: "milliseconds") # Время по UTC
+
+_service_name = ""
+if exists(.kubernetes.pod_labels.app) {
+  _service_name = .kubernetes.pod_labels.app
+} else if exists(.kubernetes.pod_labels.pod_namespace) {
+  _service_name = .kubernetes.pod_namespace
+}
+
+.service_name = _service_name
+
+#
+# Извлекаем в поля данные среды Kubernetes
+#
+## имя кластера в котором размещено приложение
+.cluster_name = del(.k8s_service_name)
+.pod_name = del(.kubernetes.pod_name)
+.pod_ip = del(.kubernetes.pod_ip)
+.namespace = del(.kubernetes.pod_namespace)
+
+.deployment = "unknown"
+if .pod_name != "-" {
+  if !is_null(.kubernetes.pod_labels."pod-template-hash") {
+     replicaset_name = string!(.kubernetes.pod_labels."pod-template-hash")
+     .deployment = replace!(.pod_name, replicaset_name, " # ")
+  }
+  name_parts = split(.deployment, "- # ")
+  if length(name_parts) > 1 {
+    .deployment = name_parts[0]
+  }
+}
+
+## Kubernetes: данные Container
+.container_name = del(.kubernetes.container_name)
+.container_image = del(.kubernetes.container_image)
+'''
+
+
+#
+# Трансформ для подоготовки события vector из разобранного json сообщения
+#
+[transforms.http_accesslog-k8s]
+type = "remap"
+inputs = ["http_accesslog-k8s_prepared"]
+drop_on_error = true
+source = '''
+_request_scheme = to_string!( del(.parsed_accesslog_message.scheme) )
+_request_host = to_string!( del(.parsed_accesslog_message.host) )
+_request_uri = to_string!( del(.parsed_accesslog_message.request_uri) )
+
+# Информация HTTP-запроса
+.http_method = upcase(  to_string!( del(.parsed_accesslog_message.method) )  )
+.http_url = _request_scheme + "://" + _request_host + _request_uri
+.http_scheme = downcase(_request_scheme)
+.http_host = downcase(_request_host)
+.http_port = "0"
+.http_path = ""
+
+# Достать номер порта и путь ресурса
+_parsed_url, err = parse_url(.http_url, default_known_ports: true)
+if err == null { # все ок - раскладываем url полям
+  .http_port = _parsed_url.port
+  .http_path = _parsed_url.path
+}
+del(.parsed_accesslog_message.path) # не используем, потому удаляем
+
+.http_version = del(.parsed_accesslog_message.protocol)
+.http_user_agent = del(.parsed_accesslog_message.user_agent)
+.http_referer = del(.parsed_accesslog_message.referrer)
+.http_request_id = del(.parsed_accesslog_message.request_id)
+.http_query_string = decode_percent(del(.parsed_accesslog_message.request_query)) ?? ""
+
+# Данные HTTP-ответа
+.http_status_code = del(.parsed_accesslog_message.status)
+_requestTime = del(.parsed_accesslog_message.request_time)
+.duration_sec = 0.0
+_requestTimeFloat, err = to_float(_requestTime)
+if err != null {
+    .parsed_accesslog_message.error = "transforms.http_accesslog-k8s: failed to convert request_time, not a float number"
+    log("transforms.http_accesslog-k8s: failed to convert duration from float request_time, err="+err)
+}
+.duration_sec = _requestTimeFloat # храним секунды и до наносекунд в десятичной части
+
+# Данные трассировки
+.trace_id = ""
+if !is_null(.parsed_accesslog_message.trace_id) {
+    .trace_id = .parsed_accesslog_message.trace_id
+}
+
+.traceparent = ""
+if !is_null(.parsed_accesslog_message.traceparent) {
+    .traceparent = .parsed_accesslog_message.traceparent
+}
+
+# Данные сетевого взаимодействияы
+.network_client_ip = "0.0.0.0"
+if exists(.parsed_accesslog_message.address) {
+    .network_client_ip = del(.parsed_accesslog_message.address)
+}
+
+.network_bytes_written = 0
+.network_bytes_written, err = to_int(del(.parsed_accesslog_message.bytes_sent))
+if err != null {
+    .network_bytes_written = 0
+    .parsed_accesslog_message.error = "transforms.http_accesslog-k8s: failed to convert .bytes_sent"
+    log("transforms.http_accesslog-k8s: failed to convert .bytes_sent, err="+err)
+}
+
+# Данные upstream
+.upstream_http_status_code = ""
+_upstream_http_status_code = del(.parsed_accesslog_message.upstream_status)
+if (is_string(_upstream_http_status_code) ) {
+  .upstream_http_status_code, err = to_int(_upstream_http_status_code)
+  if err != null {
+     log("transforms.http_accesslog-k8s: failed to convert .upstream_status to int, err="+err)
+  }
+}
+
+.upstream_addr = del(.parsed_accesslog_message.upstream_addr)
+
+_upstream_bytes_received = del(.parsed_accesslog_message.upstream_bytes_received)
+if is_null(_upstream_bytes_received) {
+    _upstream_bytes_received = 0
+}
+.upstream_network_bytes_written = _upstream_bytes_received
+
+_upstream_response_time = del(.parsed_accesslog_message.upstream_response_time)
+if is_null(_upstream_response_time) || _upstream_response_time == ""  {
+    _upstream_response_time = 0.0
+}
+
+.upstream_duration_sec = 0.0
+_upstream_response_time_float, err = to_float(_upstream_response_time)
+if err != null {
+    .parsed_accesslog_message.error = "transforms.http_accesslog-k8s: failed to convert upstream_response_time, not a float number"
+    log("transforms.http_accesslog-k8s: failed to convert upstream_duration_sec from float upstream_response_time, err="+err)
+}
+.upstream_duration_sec = _upstream_response_time_float # секунды в целой части и до наносекунд в десятичной
+if err != null {
+     log("transforms.http_accesslog-k8s: failed to convert .upstream_duration_sec to int, err="+err)
+  }
+'''

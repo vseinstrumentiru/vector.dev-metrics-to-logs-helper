@@ -1,202 +1,9 @@
 #
-# Трансформ для выделения логов сформированных как нам надо
-# В deployment определении в pod_annotations добавленна аннотация вида containers.domain/container_name.log_source = "http_accesslog"
-# Обрабатываем только логи с такой аннотацией (для обратной совметимости на момент перехода)
-#
-[transforms.app_k8s_log_streams]
-type = "route"
-inputs = ["kafka"]
-
-    [transforms.app_k8s_log_streams.route]
-    http_accesslog-k8s_logs = '''
-        # Выбираем логи в этот поток, если есть аннтотация в поде с значением http_accesslog
-        _container_name = string!(.kubernetes.container_name)
-        _log_source = "unknown"
-        _log_source = get!(value: .kubernetes.pod_annotations, path: ["containers.domain/{{ '{{' }} _container_name {{' }}' }}.log_source"])
-        has_http_accesslog_annotation = _log_source == "http_accesslog"
-
-        # итоговый фильтр для отбора событий
-        has_http_accesslog_annotation
-    '''
-
-#
-# Трансформ для разбора запси лога из json
-#
-[transforms.http_accesslog-k8s_prepared]
-type = "remap"
-inputs = ["app_k8s_log_streams.http_accesslog-k8s_logs"]
-source = '''
-
-.parsed_accesslog_message, err = parse_json(del(.message)) # вот тут данные присланные приложением в формате http_accesslog
-if err != null { # иначе бросаем в лог ошибку и отменяем обработку
-    log("http_accesslog-k8s_prepared failed: .message is an invalid json, err=" + err)
-    abort
-}
-
-# // приводим данные к нужным типам или выставляем значения по умолчанию
-_ts, err = parse_timestamp(del(.parsed_accesslog_message.time), "%+")
-if err != null {
-    _ts = now()
-    log("transforms.base-fields-extracted: .parsed_accesslog_message.time parse failed, err=" + err)
-}
-
-.ts = to_unix_timestamp(_ts, unit: "milliseconds") # Время по UTC
-
-_service_name = ""
-if exists(.kubernetes.pod_labels.app) {
-  _service_name = .kubernetes.pod_labels.app
-} else if exists(.kubernetes.pod_labels.pod_namespace) {
-  _service_name = .kubernetes.pod_namespace
-}
-
-.service_name = _service_name
-
-#
-# Извлекаем в поля данные среды Kubernetes
-#
-## имя кластера в котором размещено приложение
-.cluster_name = del(.k8s_service_name)
-.pod_name = del(.kubernetes.pod_name)
-.pod_ip = del(.kubernetes.pod_ip)
-.namespace = del(.kubernetes.pod_namespace)
-
-.deployment = "unknown"
-if .pod_name != "-" {
-  if !is_null(.kubernetes.pod_labels."pod-template-hash") {
-     replicaset_name = string!(.kubernetes.pod_labels."pod-template-hash")
-     .deployment = replace!(.pod_name, replicaset_name, " # ")
-  }
-  name_parts = split(.deployment, "- # ")
-  if length(name_parts) > 1 {
-    .deployment = name_parts[0]
-  }
-}
-
-## Kubernetes: данные Container
-.container_name = del(.kubernetes.container_name)
-.container_image = del(.kubernetes.container_image)
-'''
-
-
-#
-# Трансформ для подоготовки события vector из разобранного json сообщения
-#
-[transforms.http_accesslog-k8s]
-type = "remap"
-inputs = ["http_accesslog-k8s_prepared"]
-drop_on_error = true
-source = '''
-_request_scheme = to_string!( del(.parsed_accesslog_message.scheme) )
-_request_host = to_string!( del(.parsed_accesslog_message.host) )
-_request_uri = to_string!( del(.parsed_accesslog_message.request_uri) )
-
-# Информация HTTP-запроса
-.http_method = upcase(  to_string!( del(.parsed_accesslog_message.method) )  )
-.http_url = _request_scheme + "://" + _request_host + _request_uri
-.http_scheme = downcase(_request_scheme)
-.http_host = downcase(_request_host)
-.http_port = "0"
-.http_path = ""
-
-# Достать номер порта и путь ресурса
-_parsed_url, err = parse_url(.http_url, default_known_ports: true)
-if err == null { # все ок - раскладываем url полям
-  .http_port = _parsed_url.port
-  .http_path = _parsed_url.path
-}
-del(.parsed_accesslog_message.path) # не используем, потому удаляем
-
-.http_version = del(.parsed_accesslog_message.protocol)
-.http_user_agent = del(.parsed_accesslog_message.user_agent)
-.http_referer = del(.parsed_accesslog_message.referrer)
-.http_request_id = del(.parsed_accesslog_message.request_id)
-.http_query_string = decode_percent!(del(.parsed_accesslog_message.request_query))
-.is_internal_traffic = del(.parsed_accesslog_message.is_internal_traffic)
-if is_null(.is_internal_traffic) {
-  .is_internal_traffic = 0
-}
-
-# Данные HTTP-ответа
-.http_status_code = del(.parsed_accesslog_message.status)
-_requestTime = del(.parsed_accesslog_message.request_time)
-.duration_sec = 0.0
-_requestTimeFloat, err = to_float(_requestTime)
-if err != null {
-    .parsed_accesslog_message.error = "transforms.http_accesslog-k8s: failed to convert request_time, not a float number"
-    log("transforms.http_accesslog-k8s: failed to convert duration from float request_time, err="+err)
-}
-.duration_sec = _requestTimeFloat # храним секунды и до наносекунд в десятичной части
-
-# Данные трассировки
-.trace_id = ""
-if !is_null(.parsed_accesslog_message.trace_id) {
-    .trace_id = .parsed_accesslog_message.trace_id
-}
-
-.traceparent = ""
-if !is_null(.parsed_accesslog_message.traceparent) {
-    .traceparent = .parsed_accesslog_message.traceparent
-}
-
-# Данные сетевого взаимодействияы
-.network_client_ip = "0.0.0.0"
-if exists(.parsed_accesslog_message.address) {
-    .network_client_ip = del(.parsed_accesslog_message.address)
-}
-
-.network_bytes_written = 0
-.network_bytes_written, err = to_int(del(.parsed_accesslog_message.bytes_sent))
-if err != null {
-    .network_bytes_written = 0
-    .parsed_accesslog_message.error = "transforms.http_accesslog-k8s: failed to convert .bytes_sent"
-    log("transforms.http_accesslog-k8s: failed to convert .bytes_sent, err="+err)
-}
-
-# Данные upstream
-.upstream_http_status_code = ""
-_upstream_http_status_code = del(.parsed_accesslog_message.upstream_status)
-if (is_string(_upstream_http_status_code) ) {
-  .upstream_http_status_code, err = to_int(_upstream_http_status_code)
-  if err != null {
-     log("transforms.http_accesslog-k8s: failed to convert .upstream_status to int, err="+err)
-  }
-}
-
-.upstream_addr = del(.parsed_accesslog_message.upstream_addr)
-
-_upstream_bytes_received = del(.parsed_accesslog_message.upstream_bytes_received)
-if is_null(_upstream_bytes_received) {
-    _upstream_bytes_received = 0
-}
-.upstream_network_bytes_written = _upstream_bytes_received
-
-_upstream_response_time = del(.parsed_accesslog_message.upstream_response_time)
-if is_null(_upstream_response_time) || _upstream_response_time == ""  {
-    _upstream_response_time = 0.0
-}
-
-.upstream_duration_sec = 0.0
-_upstream_response_time_float, err = to_float(_upstream_response_time)
-if err != null {
-    .parsed_accesslog_message.error = "transforms.http_accesslog-k8s: failed to convert upstream_response_time, not a float number"
-    log("transforms.http_accesslog-k8s: failed to convert upstream_duration_sec from float upstream_response_time, err="+err)
-}
-.upstream_duration_sec = _upstream_response_time_float # секунды в целой части и до наносекунд в десятичной
-if err != null {
-     log("transforms.http_accesslog-k8s: failed to convert .upstream_duration_sec to int, err="+err)
-  }
-'''
-
-
-#
-# ВНИМАНИЕ! Эти трансформы ниже жестко связаны с настройками метрик в metrics-catalog.yml, при их изменении необходимо исправить и тесты
+# ВНИМАНИЕ! Эти трансформы жестко связаны с настройками метрик в metrics-catalog.yml, при их изменении необходимо исправить и тесты
 #
 
 ###############################################################################
 
-#
-# Трансформ для исключения некоторых логов, чтобы не попадали в подсчет для метрики
-#
 [transforms.metrics-http-accesslog-k8s_exclude_filter]
 type = "filter"
 inputs = ["http_accesslog-k8s"]
@@ -226,7 +33,7 @@ exclude_event = false {%- for selector_conf in metrics_catalog.exclude_events -%
             {%- if fconf.nre != "" %}
 && !match(.{{ logfield_name }}, r'{{ fconf.nre }}')
             {%- else %}
-Build text: ERROR: invalid regexp '{{ fconf.nre }}' for {{ namespace }}/{{ metric_name }}, selector: {{ selector_conf.selector }}, filter: re
+Build text: ERROR: invalid regexp '{{ fconf.nre }}' for {{ namespace }}/{{ metric_name }}, selector: {{ selector_conf.selector }}, filter: nre
             {%- endif -%}
         {%- endif -%}
         {%- if fconf.oneOfRe is defined %}
@@ -246,19 +53,27 @@ is_allowed = !exclude_event
 is_allowed
 '''
 
-#
-# Трансформ для отбора подходящих записей логов для учета в метрике
-# Формируем выражение по metrics-catalog.yml
-[transforms.metrics-http-accesslog-k8s_filter]
+# 1) [x] Создаем трансформ с фильтром под каждую метрику (уникальное имя фильтра с общим префиксом)
+# 2) Создаем определения метрик под каждую метрику
+# 3) Собираем все источники метрик в общий cardinality-limiter
+
+
+# Проходим по всем namespace и метрикам, создаем условия отбора для событий из input
+{%- set _filter_name_prefix = "metrics-http-accesslog-k8s-filter-metric_" %}
+{%- for namespace, metric in metrics_catalog.metrics.items() -%}
+    {%- for metric_name, metric_conf in metric.items() -%}
+        {%- set _metric_full_name = namespace + "_" + metric_name -%}
+        {%- set _filter_name = _filter_name_prefix + _metric_full_name %}
+{{ ' ' }}
+###############################################################################
+# GENERATED CODE: for {{ _filter_name }}
+[transforms.{{ _filter_name }}]
 type = "filter"
 inputs = ["metrics-http-accesslog-k8s_exclude_filter"]
 condition = '''
-# Проходим по всем namespace и метрикам, создаем условия отбора для событий из input
-is_event_matched = false {%- for namespace, metric in metrics_catalog.metrics.items() -%}
-    {%- for metric_name, metric_conf in metric.items() -%}
-        {%- for selector_conf in metric_conf.event_selectors -%}
+        false {%- for selector_conf in metric_conf.event_selectors -%}
 {{ ' ' }} || # selector_id: {{ namespace }}/{{ metric_name }}/selectors/{{loop.index0 }}
- ((  true {# оборачиваем выражения одного selector #}
+((  true {# оборачиваем выражения одного selector #}
             {%- for logfield_name, fconf in selector_conf.filter.items() %}
 {# newline #}
 {# Тут выполняем выбор оператора сравнения и констуируем выражение -#}
@@ -273,14 +88,14 @@ is_event_matched = false {%- for namespace, metric in metrics_catalog.metrics.it
                     {%- if fconf.re != "" %}
  && match(to_string!(.{{ logfield_name }}), r'{{ fconf.re }}')
                     {%- else %}
-[transforms.metrics-http-accesslog-k8s_filter] Build text: ERROR: invalid regexp '{{ fconf.re }}' for {{ namespace }}/{{ metric_name }}, selector: {{ selector_conf.selector }}, filter: re
+[transforms.metrics-http-accesslog-k8s_routes] Build text: ERROR: invalid regexp '{{ fconf.re }}' for {{ namespace }}/{{ metric_name }}, selector: {{ selector_conf.selector }}, filter: re
                     {%- endif -%}
                 {%- endif -%}
                 {%- if fconf.nre is defined %}
                     {%- if fconf.nre != "" %}
  && !match(.{{ logfield_name }}, r'{{ fconf.nre }}')
                     {%- else %}
-Build text: ERROR: invalid regexp '{{ fconf.nre }}' for {{ namespace }}/{{ metric_name }}, selector: {{ selector_conf.selector }}, filter: re
+Build text: ERROR: invalid regexp '{{ fconf.nre }}' for {{ namespace }}/{{ metric_name }}, selector: {{ selector_conf.selector }}, filter: nre
                     {%- endif -%}
                 {%- endif -%}
                 {%- if fconf.oneOfRe is defined %}
@@ -292,70 +107,77 @@ r'{{ one_re }}',
                 {%- endif -%}
             {% endfor %}
 {{ ' ' }} ))
-        {%- endfor %}
+        {%- endfor -%}
+        {{ ' ' }}
+    '''
 {# newline #}
     {%- endfor %}
 {%- endfor %}
 
-is_allowed = is_event_matched
-# решение подходит ли событие
-is_allowed
-'''
 
-#
-# Трансформ для снижения кардинальности метрик (замена динамических частей http_path на константу местозаменитель из label_override)
-#
-[transforms.metrics-http-accesslog-k8s_prepared]
+###############################################################################
+{%- for namespace, metric in metrics_catalog.metrics.items() -%}
+    {%- for metric_name, metric_conf in metric.items() -%}
+        {%- set _metric_full_name = namespace + "_" + metric_name -%}
+        {%- set _input_name = _filter_name_prefix + _metric_full_name -%}
+        {%- set _reducer_name = "metrics-http-accesslog-k8s_reducer_" + _metric_full_name %}
+# GENERATED CODE: for {{ _metric_full_name }}
+[transforms.{{ _reducer_name }}]
 type = "remap"
-inputs = [ "metrics-http-accesslog-k8s_filter" ]
+inputs = [ "{{ _input_name }}" ]
 source = '''
-{# Проходим по всем namespace и метрикам, подготовка для replace #}
-{# newline #}
-###
-## Делаем замены значений в полях на константы для снижения кардинальности метрик. Например, заменяем .http_path = /product/perchatki на .http_path = /product/:name
-##
-{% set _string_fields = dict() %}
-{% for namespace, metric in metrics_catalog.metrics.items() %}
-    {%- for metric_name, metric_conf in metric.items() %}
-# -= namespace: {{ namespace }}, metric: {{ metric_name }} =-
-{# newline #}
-        {%- for selector_conf in metric_conf.event_selectors -%}
-            {% for logfield_name, fconf in selector_conf.filter.items() -%}
-              {% if logfield_name not in _string_fields -%}
-                {%- set _= _string_fields.update( {logfield_name: 1 }) -%}
+    ###
+    ## Делаем замены значений в полях на константы для снижения кардинальности метрик. Например, заменяем .http_path = /product/perchatki на .http_path = /product/:name
+    ##
+    {% set _string_fields = dict() %}
+    {# newline #}
+    {%- for selector_conf in metric_conf.event_selectors -%}
+        {% for logfield_name, fconf in selector_conf.filter.items() -%}
+            {% if logfield_name not in _string_fields -%}
+            {%- set _= _string_fields.update( {logfield_name: 1 }) -%}
 .{{ logfield_name }} = to_string(.{{ logfield_name }}) ?? "error:not_a_string:{{ logfield_name }}" # требуется, чтобы не ругался replace
 {# newline #}
-              {%- endif -%}
+            {%- endif -%}
 {# newline #}
 {#- Тут выполняем выбор оператора сравнения и констуируем выражение -#}
-                {%- if fconf.re is defined %}
-                    {%- if fconf.re != "" %}
-                        {%- if fconf.label_override is defined and fconf.label_override != "" %}
+            {%- if fconf.re is defined %}
+                {%- if fconf.re != "" %}
+                    {%- if fconf.label_override is defined and fconf.label_override != "" %}
 .{{ logfield_name }} = replace(.{{ logfield_name }}, r'{{ fconf.re }}', s'{{ fconf.label_override }}');
 {# newline #}
-                        {%- endif %}
-                    {%- else %}
-[transforms.metrics-http-accesslog-k8s_prepared] Build text: ERROR: invalid regexp '{{ fconf.re }}' for {{ namespace }}/{{ metric_name }}, selector: {{ selector_conf.selector }}, filter: re
+                    {#- TODO: добавить "автозамену" автоматическую генерацию подстановочного значения по regexp, через ansible filter -#}
                     {%- endif %}
+                {%- else %}
+[{{ _reducer_name }}] Build text: ERROR: invalid regexp '{{ fconf.re }}' for {{ namespace }}/{{ metric_name }}, selector: {{ selector_conf.selector }}, filter: re
                 {%- endif %}
-            {%- endfor %}
+            {%- endif %}
         {%- endfor %}
     {%- endfor %}
-{%- endfor %}
 '''
+{{ ' ' }}
+{# newline #}
+    {%- endfor %}
+{%- endfor %}
 
 
-[transforms.metrics-http-accesslog-k8s]
-type = "log_to_metric"
-inputs = [ "metrics-http-accesslog-k8s_prepared" ]
-
+{# TODO: добавить проверку - юнит тест, с golden файлом, что генерит, то что ожидаем #}
 ###
 ### GENERATED METRCS DEFINITIONS
 ###
-{% for namespace, metrics in metrics_catalog.metrics.items() %}
-  {% for metric_name, metric_conf in metrics.items() %}
+###############################################################################
+{% set metric_sources = [] %}
+{%- for namespace, metric in metrics_catalog.metrics.items() -%}
+    {%- for metric_name, metric_conf in metric.items() -%}
+        {%- set _metric_full_name = namespace + "_" + metric_name %}
+        {%- set _input_name = "metrics-http-accesslog-k8s_reducer_" + _metric_full_name -%}
+        {%- set _transform_name = "metrics-http-accesslog-k8s-metric-" + _metric_full_name %}
+        {{- metric_sources.append( _transform_name ) }}
 
-  [[transforms.metrics-http-accesslog-k8s.metrics]]
+[transforms.{{ _transform_name }}]
+type = "log_to_metric"
+inputs = [ "{{ _input_name }}" ]
+
+  [[transforms.{{ _transform_name }}.metrics]]
     type = "{{ metric_conf.metric_type }}"
     field = "{{ metric_conf.group_by_logfield }}"
     name = "{{ metric_name }}"
@@ -363,7 +185,8 @@ inputs = [ "metrics-http-accesslog-k8s_prepared" ]
     namespace = "{{ namespace }}"
 {% endif %}
 
-    [transforms.metrics-http-accesslog-k8s.metrics.tags]
+    [transforms.{{ _transform_name }}.metrics.tags]
+      environment = "{{ vector_environment }}"
       {% for label, logfield in metric_conf.label_logfield_mapping.items() -%}
       {{ label }} = "{{ '{{' }}{{ logfield }}{{ '}}' }}"
       {% endfor %}
@@ -371,13 +194,8 @@ inputs = [ "metrics-http-accesslog-k8s_prepared" ]
   {% endfor %}
 {% endfor %}
 
-#
-# Трансформ для ограничения кардинальности метрик, если вдруг не задали label_override для высококардинальной метрики
-#
-[transforms.metrics-cardinality-limiter]
-type = "tag_cardinality_limit"
-inputs = [ "metrics-http-accesslog-k8s"]
-mode = "probabilistic" # менее точный метод, но менее требователен к памяти
-cache_size_per_key = 5_120_000
-limit_exceeded_action = "drop_tag"
-value_limit = 1000
+
+[transforms.metrics-http-accesslog-k8s]
+type = "filter"
+inputs = [{{ metric_sources | map("to_json") | join(',')}}]
+condition = '''true'''
