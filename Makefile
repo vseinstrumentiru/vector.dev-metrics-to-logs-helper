@@ -9,10 +9,11 @@ OS := $(shell uname -s)
 TOOLS_DIR ?= .tools
 SUDO_PASSWORD ?= human
 
-VECTOR_VERSION ?= 0.35.0
+VECTOR_VERSION ?= 0.43.0
 # если установлен в системе, то доступен как команда в /usr/bin/vector
 VECTOR_BINARY ?= $(TOOLS_DIR)/vector_$(VECTOR_VERSION)_$(OS)_amd64
 VECTOR_CONFIG_DIR ?= $(PWD)/.generated/vector_config
+VECTOR_ENV ?= ${VECTOR_ENV}
 YQ_VERSION ?= 4.30.5
 JV_VERSION ?= 0.4.0
 
@@ -32,7 +33,7 @@ YQ_BINARY_URL := https://github.com/mikefarah/yq/releases/download/v$(YQ_VERSION
 
 
 .PHONY: install-dependencies
-install-dependencies: ## Install required dependencies
+install-dependencies: download-vector-bin ## Install required dependencies
 	mkdir -p $(TOOLS_DIR)
 ifeq (,$(wildcard $(YQ_BINARY)))
 	wget -qO $(YQ_BINARY) $(YQ_BINARY_URL) --show-progress && chmod +x $(YQ_BINARY)
@@ -106,7 +107,7 @@ generate-vector-conf: | validate-metrics-catalog-spec lint-vector-config ## Gene
 	VECTOR_KAFKA_USERNAME=fake \
 	ansible-playbook -connection=local --inventory localhost, $($@_tmpfile) \
 		--tags aggregator \
-		--extra-vars "development_mode=true" \
+		--extra-vars "vector_environment=$(VECTOR_ENV)" \
 		--extra-vars "ansible_sudo_pass=$(SUDO_PASSWORD)" \
 		--extra-vars "local_build=true" \
 		--extra-vars "vector_config_dir=$(VECTOR_CONFIG_DIR)" \
@@ -135,6 +136,12 @@ else
 	@echo Test file: $(file)
 	$(VECTOR_BINARY) test $(VECTOR_CONFIG_DIR)/*_sources_*.toml $(VECTOR_CONFIG_DIR)/*transforms_*.toml $(file)
 endif
+
+.PHONY: generate-vector-graph
+generate-vector-graph: ## Generate vector.dev transform topology graph as SVG
+	$(info $(M) Generate vector topology as SVG with config $(VECTOR_CONF_NAME) at $(VECTOR_CONFIG_DIR)...)
+	$(info $(M) You should have graphviz installed: sudo apt install graphviz)
+	$(VECTOR_BINARY) graph -C $(VECTOR_CONFIG_DIR) | dot -Tsvg > vector_topology.svg
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
