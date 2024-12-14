@@ -13,7 +13,7 @@ VECTOR_VERSION ?= 0.43.0
 # если установлен в системе, то доступен как команда в /usr/bin/vector
 VECTOR_BINARY ?= $(TOOLS_DIR)/vector_$(VECTOR_VERSION)_$(OS)_amd64
 VECTOR_CONFIG_DIR ?= $(PWD)/.generated/vector_config
-VECTOR_ENV ?= ${VECTOR_ENV}
+VECTOR_ENV ?= testing
 YQ_VERSION ?= 4.30.5
 JV_VERSION ?= 0.4.0
 
