@@ -25,7 +25,7 @@
 1. Используйте Ubuntu Linux (или Debian)
 2. Запустите `make install-dependencies` и `make install-dev-dependencies`
 3. Запустите `make download-vector-bin` - установить файлы vector для валидации запуска тестов
-4. Выполните сборку и тесты `make test-vector-transfroms`
+4. Выполните сборку и тесты `make test-vector-transforms`
 5. Созданные файлы смотрите в каталоге [.generated/vector_config]
 
 ## Контакты

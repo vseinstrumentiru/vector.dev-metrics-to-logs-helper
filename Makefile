@@ -122,20 +122,26 @@ validate-vector-conf: generate-vector-conf ## Validate current vector.dev config
 	$(info $(M) Validate vector config at $(VECTOR_CONFIG_DIR)...)
 	$(VECTOR_BINARY) validate -C $(VECTOR_CONFIG_DIR) --no-environment
 
-.PHONY: test-vector-transfroms
-test-vector-transfroms: | generate-vector-conf validate-vector-conf  ## Run vector.dev transform tests
-	$(info $(M) Run transforms tests with config $(VECTOR_CONFIG_DIR)...)
+.PHONY: test-vector-transforms
+test-vector-transforms: | generate-vector-conf validate-vector-conf  ## Run vector.dev transform tests (with generate and validate config)
+	$(info $(M) Run transforms tests with config $(VECTOR_CONF_NAME) at $(VECTOR_CONFIG_DIR)...)
 	$(VECTOR_BINARY) test $(VECTOR_CONFIG_DIR)/*_sources_*.toml $(VECTOR_CONFIG_DIR)/*transforms_*.toml $(VECTOR_CONFIG_DIR)/*_tests_*.toml
 
-.PHONY: test-vector-transfrom
-test-vector-transfrom:  ## Run vector.dev test for a specifed test file
+.PHONY: test-vector-transform
+test-vector-transform:  ## Run vector.dev test for a specified test file (no config generation included). Use var file=files/aggregator/tests/filename to provide a test file name
 ifndef file
-	@echo "To run use file=testfile make ..."
+	@echo "To run use file=files/aggregator/tests/testfile.toml.j2 make test-vector-transform"
+	@echo "It will include the specified file into check excluding other test files, except embedded in transforms files"
 else
-	$(info $(M) Run a transform test with config $(VECTOR_CONFIG_DIR)...)
+	$(info $(M) Run a transform test with config $(VECTOR_CONF_NAME) at $(VECTOR_CONFIG_DIR)...)
 	@echo Test file: $(file)
-	$(VECTOR_BINARY) test $(VECTOR_CONFIG_DIR)/*_sources_*.toml $(VECTOR_CONFIG_DIR)/*transforms_*.toml $(file)
+	$(eval PROCESSED_PATH=$(shell echo $(file) | sed 's/files\///' | sed 's/\.j2$$//' | tr '/' '_'))
+	$(eval RENDERED_PATH=$(VECTOR_CONFIG_DIR)/$(PROCESSED_PATH))
+	@echo Rendered test file: $(RENDERED_PATH)
+	@test -s $(RENDERED_PATH) || { echo "No rendered test file exists! Exiting..."; exit 1; }
+	$(VECTOR_BINARY) test $(VECTOR_CONFIG_DIR)/*_sources_*.toml $(VECTOR_CONFIG_DIR)/*transforms_*.toml ${RENDERED_PATH}
 endif
+
 
 .PHONY: generate-vector-graph
 generate-vector-graph: ## Generate vector.dev transform topology graph as SVG
