@@ -1,2 +1,3 @@
 .generated/*
 .tools/*
+.vscode/settings.json
