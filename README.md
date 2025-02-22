@@ -4,7 +4,7 @@
 
 1. Полагаемся на то, что все сервисы пишут логи в фиксированном формате JSON и имеют одинаковый набор обязательных полей. См. [example_logs]
 2. Для кодогенерации использован Ansible и jinja2 шаблоны. Генерируем toml файлы конфигурации vector.dev и тесты к ним, где нужно.
-3. Метрики определяются в файле [ansible-playbook/vars/metrics-catalog.yml], после этого запускаем генерацию через ansible. См пример в Makefile
+3. Метрики определяются в файле [ansible-playbook/vars/metrics-catalog.<env>.yml], после этого запускаем генерацию через ansible. См пример в Makefile. По умолчанию генерируется для `env=testing`, чтобы генерировать для production запускать `VECTOR_ENV=production make <команда>`
 4. Отдельной задачей конфигурации выгружаются на серверы с агрегаторами vector.dev, и для применения новой конфигурации выполняется перезапуск процесса vector
 
 ## Что нам дал рефакторинг
@@ -18,16 +18,19 @@
 
 Данный код является ознакомительным и не представляет собой готовое решение, вы можете придумать свое на основе данных идей.
 Потому мы не приводим полные конфигурации vector.dev, код развертывания и полный набор ansible файлов для playbook.
-Однако вы можете сгенерировать по файлу [ansible-playbook/vars/metrics-catalog.yml] файлы конфигурации vector и посмотреть как они выглядят.
+Однако вы можете сгенерировать по файлу [ansible-playbook/vars/metrics-catalog.<env>.yml] файлы конфигурации vector и посмотреть как они выглядят.
 
 ## Генерирование файлов конфигурации
 
 1. Используйте Ubuntu Linux (или Debian)
 2. Запустите `make install-dependencies` и `make install-dev-dependencies`
 3. Запустите `make download-vector-bin` - установить файлы vector для валидации запуска тестов
-4. Выполните сборку и тесты `make test-vector-transforms`
+3. Метрики определяются в файле [ansible-playbook/vars/metrics-catalog.<env>.yml], после этого запускаем генерацию через ansible. См пример в Makefile. По умолчанию генерируется для `env=testing`, чтобы генерировать для production запускать `VECTOR_ENV=production make <команда>`
+4. Выполните сборку и тесты `VECTOR_ENV=<env> make test-vector-transforms`, если не указать VECTOR_ENV, то используется `VECTOR_ENV=testing`
 5. Созданные файлы смотрите в каталоге [.generated/vector_config]
 
 ## Контакты
 
 Если вам интересны подробности вы можете писать нам, см. сайт https://vitech.team/ ("По вопросам сотрудничества") или приходите работать к нам.
+
+Или https://github.com/r3code

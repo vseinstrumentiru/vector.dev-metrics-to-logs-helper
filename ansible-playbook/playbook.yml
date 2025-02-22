@@ -8,7 +8,7 @@
     vector_kafka_sasl_password: "{{ lookup('ansible.builtin.env', 'VECTOR_KAFKA_PASSWORD') }}"
     vector_kafka_sasl_username: "{{ lookup('ansible.builtin.env', 'VECTOR_KAFKA_USERNAME') }}"
   vars_files:
-    - "{{ playbook_dir }}/vars/metrics-catalog.yml"
+    - "{{ playbook_dir }}/vars/metrics-catalog.{{ vector_environment }}.yml"
   ignore_errors: true
   tasks:
     - name: "Local Build. Generate Vector Config Files"

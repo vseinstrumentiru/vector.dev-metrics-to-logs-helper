@@ -1,0 +1,12 @@
+{% if vector_environment == 'production'%}
+###############################################################################
+# Tests: transforms.metrics-http-accesslog-k8s_<generated_name>
+# ВНИМАНИЕ! Тест привязан к metrics-catalog.production.yml, если он изменить там имена, то тесты тут надо поправить тоже!
+###############################################################################
+
+# Исправность функционирования самих трансформов проверяется по metrics-catalog.testing.yml
+# Добавить сюда тесты для герерации метрик по metrics-catalog.production.yml, если нужно что-то проверить для них
+
+
+{# end --> if vector_environment == 'production' #}
+{% endif %}

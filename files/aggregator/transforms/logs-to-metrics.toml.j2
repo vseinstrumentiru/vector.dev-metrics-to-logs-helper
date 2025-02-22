@@ -1,5 +1,5 @@
 #
-# ВНИМАНИЕ! Эти трансформы жестко связаны с настройками метрик в metrics-catalog.yml, при их изменении необходимо исправить и тесты
+# ВНИМАНИЕ! Эти трансформы жестко связаны с настройками метрик в metrics-catalog.{{ vector_environment }}.yml, при их изменении необходимо исправить и тесты
 #
 
 ###############################################################################
@@ -53,9 +53,9 @@ is_allowed = !exclude_event
 is_allowed
 '''
 
-# 1) [x] Создаем трансформ с фильтром под каждую метрику (уникальное имя фильтра с общим префиксом)
+# 1) Создаем трансформ с фильтром под каждую метрику (уникальное имя фильтра с общим префиксом)
 # 2) Создаем определения метрик под каждую метрику
-# 3) Собираем все источники метрик в общий cardinality-limiter
+# 3) Собираем все источники метрик в общий metrics-http-accesslog-k8s
 
 
 # Проходим по всем namespace и метрикам, создаем условия отбора для событий из input
@@ -145,7 +145,6 @@ source = '''
                     {%- if fconf.label_override is defined and fconf.label_override != "" %}
 .{{ logfield_name }} = replace(.{{ logfield_name }}, r'{{ fconf.re }}', s'{{ fconf.label_override }}');
 {# newline #}
-                    {#- TODO: добавить "автозамену" автоматическую генерацию подстановочного значения по regexp, через ansible filter -#}
                     {%- endif %}
                 {%- else %}
 [{{ _reducer_name }}] Build text: ERROR: invalid regexp '{{ fconf.re }}' for {{ namespace }}/{{ metric_name }}, selector: {{ selector_conf.selector }}, filter: re
@@ -160,7 +159,6 @@ source = '''
 {%- endfor %}
 
 
-{# TODO: добавить проверку - юнит тест, с golden файлом, что генерит, то что ожидаем #}
 ###
 ### GENERATED METRCS DEFINITIONS
 ###

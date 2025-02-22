@@ -1,6 +1,7 @@
+{% if vector_environment == 'testing'%}
 ###############################################################################
 # Tests: transforms.metrics-http-accesslog-k8s_reducer_vi_http_requests_total
-# ВНИМАНИЕ! Тест привязан к metrics-catalog.yml, если он изменить имя в vi_http/requests_total, то тест сломается!
+# ВНИМАНИЕ! Тест привязан к metrics-catalog.testing.yml, если он изменить имя в vi_http/requests_total, то тест сломается!
 ###############################################################################
 
 [[tests]]
@@ -215,8 +216,7 @@
 
 
 # TODO: нужен более шикрокий тест, который генерирует и часть assert по определению из yaml
-# TODO: нужн негативный тест, что сообщенгие подходящее только к одному фильтру не попадает в другие, например если
-# TODO: возможность подложить для тестов другой metrics-catalog файл yml
+# TODO: нужн негативный тест, что сообщение подходящее только к одному фильтру не попадает в другие, например если
 ###############################################################################
 # Tests: transforms.metrics-http-accesslog-k8s
 ###############################################################################
@@ -233,7 +233,7 @@
   name = "{{ test_name }}"
 
   [[tests.inputs]]
-    insert_at = "http_accesslog-k8s"
+    insert_at = "metrics-http-accesslog-k8s_exclude_filter"
     type = "log"
 
     [tests.inputs.log_fields]
@@ -290,3 +290,6 @@
        '''
   {% endfor %}
 {% endfor %}
+
+{# end --> if vector_environment == 'testing' #}
+{% endif %}
