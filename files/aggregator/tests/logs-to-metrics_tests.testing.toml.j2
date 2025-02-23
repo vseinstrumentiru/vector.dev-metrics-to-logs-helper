@@ -223,12 +223,17 @@
 ###
 ### GENERATED TESTS
 ###
-{% for namespace, metrics in metrics_catalog.metrics.items() %}
-  {% for metric_name, metric_conf in metrics.items() %}
-    {%- set _prefix = "_" if namespace =="" else namespace + "_" -%}{#- vector даже при пустом namespace добавит _ в начало, потому мы делаем также -#}
-    {%- set metric_full_name = _prefix  + metric_name -%}
-    {%- set test_name = "transforms.metrics-http-accesslog-k8s: 050.XX check metric labels of " + metric_full_name -%}
-    {%- set _http_host = "nn.vi.ru" + "#test-for-metric: "+ metric_full_name -%}
+{% for namespace, metrics in metrics_catalog.metrics.items() -%}
+  {%- for metric_name, metric_conf in metrics.items() -%}
+    {%- for selector_conf in metric_conf.event_selectors -%}
+
+      {%- if selector_conf.testdata is defined -%}
+          {%- set _prefix = "_" if namespace =="" else namespace + "_" -%}{#- vector даже при пустом namespace добавит _ в начало, потому мы делаем также -#}
+          {%- set metric_full_name = _prefix  + metric_name -%}
+
+        {%- for test_conf in selector_conf.testdata -%}
+          {%- set test_name = "transforms.metrics-http-accesslog-k8s: 050.XX check metric labels of " + metric_full_name + " test_no: " + (loop.index | string) -%}
+
 [[tests]]
   name = "{{ test_name }}"
 
@@ -237,8 +242,14 @@
     type = "log"
 
     [tests.inputs.log_fields]
-      service_name = "webshop"
-      namespace = "webshop-production"
+      # сгенерированные строки
+      {% for logfield_name, logfield_value in test_conf.input_values.items() -%}
+      "{{ logfield_name }}" = "{{ logfield_value }}"
+      {# newline #}
+      {%- endfor %}
+
+      # зашитые строки
+      #
       # Данные Kubernetes (которые еще не изъяты)
       "kubernetes.pod_labels.\"pod-template-hash\"" = "85f59bbfd6"
       "kubernetes.pod_node_name" = "ox2-kub-prod18"
@@ -246,33 +257,10 @@
       "kubernetes.pod_owner" = "test::pod_owner"
       'kubernetes.pod_annotations."containers.vitech.team/frontend.log_source"' = "http_accesslog"
       # Данные контейнера извлеченные ранее
-      cluster_name = "test::dc2-old"
-      container_name = "frontend"
       container_image = "registry-sd.vi.net/site-vi/vi-ru/frontend:202109140836-master"
       pod_name = "webshop-85f59bbfd6-pcshd"
       pod_ip = "176.59.54.236"
       deployment = "webshop"
-      # Обработанное сообщение лога
-      "http_request_id" = "6a432b1e521b042789c1e984aee21128"
-      "http_url" = "https://nn.vi.ru/vendor/gigant/?brand_product_block_ab=0"
-      "http_scheme" = "https"
-      "http_host" = "{{ _http_host }}"
-      "http_port" = 443
-      "http_method" = "GET"
-      "http_path" = "/vendor/gigant/"
-      "http_query_string" = "brand_product_block_ab=0"
-      "http_version" = "HTTP/1.1"
-      "http_referer" = "https://www.vi.ru/"
-      "http_user_agent" = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0"
-      "http_status_code" = 200
-      "duration_sec" = 0.3
-      "traceparent" = ""
-      "trace_id" = ""
-      "network_bytes_written" = 14720
-      "network_client_ip" = "176.59.54.236"
-      "upstream_addr" = "127.0.0.1:4000"
-      "upstream_network_bytes_written" = 14693
-      "upstream_duration_sec" = 0.217
 
   [[tests.outputs]]
     extract_from = "metrics-http-accesslog-k8s"
@@ -280,15 +268,31 @@
     [[tests.outputs.conditions]]
       type = "vrl"
       source = '''
+        assert_eq!(., "DEBUG")
         assert!(!exists(.tags.pod_name))
-        assert_eq!(.tags.service_name, "webshop")
-        assert_eq!(.tags.method, "GET")
-        assert_eq!(.tags.path, "/vendor/:name")
-        assert_eq!(.tags.status, "200")
-        assert_eq!(.tags.cluster_name, "test::dc2-old")
-        assert_eq!(.tags.container_name, "frontend")
-       '''
-  {% endfor %}
+
+        {# проверить имя метрики и перфикса -#}
+        assert_eq!(.name, "{{ metric_name }}")
+        assert_eq!(.namespace, "{{ _prefix }}")
+
+        {#  проверить мапинг, для начала можно сравнить количество, если не совпадает, то выборсить ошибоку ansible -#}
+        {%- if metric_conf.label_logfield_mapping | length != test_conf.expect.label_logfield_mapping | length -%}
+          {{ "Ошибка: Длина массива не равна количеству элементов в словаре!" | fail }}
+        {%- endif -%}
+
+        {% for label_name, _ in test_conf.expect.label_logfield_mapping.items() -%}
+        {# проверяем что метрика имеет нужные label -#}
+        assert!(exists(.tags.{{ label_name }}))
+        {# проверить совпадения значения label метрик -#}
+        assert_eq!(.tags.{{ label_name }}, "{{ test_conf.expect.label_values[label_name] }}")
+        {%- endfor %}
+{{ "" }}
+      '''
+{# newline #}
+        {%- endfor %}
+      {%- endif %}
+    {%- endfor %}
+  {%- endfor %}
 {% endfor %}
 
 {# end --> if vector_environment == 'testing' #}
