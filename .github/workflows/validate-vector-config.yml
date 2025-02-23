@@ -1,0 +1,38 @@
+name: Validate Vector Configuration
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate-vector-config:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget tar
+        make install-dependencies
+        make install-dev-dependencies
+
+    # - name: Generate Vector configuration
+    #   run: make generate-vector-conf
+
+    # - name: Validate Vector configuration
+    #   run: make validate-vector-conf
+
+    - name: Gen-Validate-Test Vector transforms
+      run: make test-vector-transforms
