@@ -214,25 +214,20 @@
       "upstream_network_bytes_written" = 14693
       "upstream_duration_sec" = 0.217
 
-
-# TODO: нужен более шикрокий тест, который генерирует и часть assert по определению из yaml
-# TODO: нужн негативный тест, что сообщение подходящее только к одному фильтру не попадает в другие, например если
-###############################################################################
-# Tests: transforms.metrics-http-accesslog-k8s
-###############################################################################
 ###
-### GENERATED TESTS
+### GENERATED TESTS 2
 ###
 {% for namespace, metrics in metrics_catalog.metrics.items() -%}
   {%- for metric_name, metric_conf in metrics.items() -%}
     {%- for selector_conf in metric_conf.event_selectors -%}
 
       {%- if selector_conf.testdata is defined -%}
-          {%- set _prefix = "_" if namespace =="" else namespace + "_" -%}{#- vector даже при пустом namespace добавит _ в начало, потому мы делаем также -#}
-          {%- set metric_full_name = _prefix  + metric_name -%}
+          {%- set metric_namespace = namespace -%}{#- если пустое, то имя метки должно начинаться с _ -#}
+          {%- set metric_full_name = metric_namespace + "_" + metric_name -%}
+          {%- set selector_index = (loop.index | string) -%}
 
         {%- for test_conf in selector_conf.testdata -%}
-          {%- set test_name = "transforms.metrics-http-accesslog-k8s: 050.XX check metric labels of " + metric_full_name + " test_no: " + (loop.index | string) -%}
+          {%- set test_name = "transforms.metrics-http-accesslog-k8s: check metric " + metric_full_name + "(sel:" + selector_index + ", test:" + (loop.index | string) + ")" -%}
 
 [[tests]]
   name = "{{ test_name }}"
@@ -248,19 +243,9 @@
       {# newline #}
       {%- endfor %}
 
-      # зашитые строки
-      #
-      # Данные Kubernetes (которые еще не изъяты)
-      "kubernetes.pod_labels.\"pod-template-hash\"" = "85f59bbfd6"
+      # Остальное нужное для обраотки
+      "duration_sec" = 0.3
       "kubernetes.pod_node_name" = "ox2-kub-prod18"
-      "kubernetes.pod_uid" = "93bde4d0-9731-4785-a80e-cd27ba8ad7c2"
-      "kubernetes.pod_owner" = "test::pod_owner"
-      'kubernetes.pod_annotations."containers.vitech.team/frontend.log_source"' = "http_accesslog"
-      # Данные контейнера извлеченные ранее
-      container_image = "registry-sd.vi.net/site-vi/vi-ru/frontend:202109140836-master"
-      pod_name = "webshop-85f59bbfd6-pcshd"
-      pod_ip = "176.59.54.236"
-      deployment = "webshop"
 
   [[tests.outputs]]
     extract_from = "metrics-http-accesslog-k8s"
@@ -268,24 +253,25 @@
     [[tests.outputs.conditions]]
       type = "vrl"
       source = '''
-        assert_eq!(., "DEBUG")
         assert!(!exists(.tags.pod_name))
 
         {# проверить имя метрики и перфикса -#}
+
         assert_eq!(.name, "{{ metric_name }}")
-        assert_eq!(.namespace, "{{ _prefix }}")
+        assert_eq!(.namespace, "{{ metric_namespace }}")
+        assert!(includes([.name], "{{ metric_name }}"))
 
         {#  проверить мапинг, для начала можно сравнить количество, если не совпадает, то выборсить ошибоку ansible -#}
         {%- if metric_conf.label_logfield_mapping | length != test_conf.expect.label_logfield_mapping | length -%}
           {{ "Ошибка: Длина массива не равна количеству элементов в словаре!" | fail }}
         {%- endif -%}
 
-        {% for label_name, _ in test_conf.expect.label_logfield_mapping.items() -%}
+        {% for label_name, _ in metric_conf.label_logfield_mapping.items() -%}
         {# проверяем что метрика имеет нужные label -#}
         assert!(exists(.tags.{{ label_name }}))
-        {# проверить совпадения значения label метрик -#}
+        {# проверить совпадения значения label метрик по label_logfield_mapping из метрики -#}
         assert_eq!(.tags.{{ label_name }}, "{{ test_conf.expect.label_values[label_name] }}")
-        {%- endfor %}
+        {% endfor %}
 {{ "" }}
       '''
 {# newline #}
@@ -294,6 +280,8 @@
     {%- endfor %}
   {%- endfor %}
 {% endfor %}
+
+
 
 {# end --> if vector_environment == 'testing' #}
 {% endif %}

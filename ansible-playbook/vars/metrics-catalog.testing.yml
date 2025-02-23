@@ -60,6 +60,43 @@ metrics_catalog:
                 eq: "webshop-production"
               service_name:
                 re: "^webshop(?:-canary)?$"
+            testdata: # указывать в ключах имена полей на выходе из transforms.http_accesslog-k8s
+              - test:
+                input_values:
+                  service_name: "webshop"
+                  container_name: "frontend"
+                  cluster_name: "test::dc2-old"
+                  http_path: "/vendor/gigant/"
+                  http_method: "GET"
+                  http_status_code: "200"
+                  namespace: "webshop-production"
+                expect:
+                  label_logfield_mapping: *default_label_logfield_mapping
+                  label_values:
+                    path: "/vendor/:name"
+                    method: "GET"
+                    status: "200"
+                    cluster_name: "test::dc2-old"
+                    container_name: "frontend"
+                    service_name: "webshop"
+              - test: canary
+                input_values:
+                  service_name: "webshop-canary"
+                  container_name: "frontend"
+                  cluster_name: "test::dc2-old"
+                  http_path: "/vendor/gigant-2/"
+                  http_method: "GET"
+                  http_status_code: "200"
+                  namespace: "webshop-production"
+                expect:
+                  label_logfield_mapping: *default_label_logfield_mapping
+                  label_values:
+                    path: "/vendor/:name"
+                    method: "GET"
+                    status: "200"
+                    cluster_name: "test::dc2-old"
+                    container_name: "frontend"
+                    service_name: "webshop-canary"
       # Метрика vi_http_request_duration_seconds
       request_duration_seconds: # требуется для transforms.metrics-http-accesslog-k8s - бакеты определены там
         metric_type: histogram
@@ -85,6 +122,26 @@ metrics_catalog:
                 eq: "webshop-production"
               http_host:
                 re: ".*local"
+            testdata: # указывать в ключах имена полей на выходе из transforms.http_accesslog-k8s
+              - test:
+                input_values:
+                  service_name: "webshop"
+                  container_name: "frontend"
+                  cluster_name: "test::dc3"
+                  http_host: "any.local"
+                  http_path: "/vendor/gigant/"
+                  http_method: "GET"
+                  http_status_code: "200"
+                  namespace: "webshop-production"
+                expect:
+                  label_logfield_mapping: *default_label_logfield_mapping
+                  label_values:
+                    vhost: "any.local"
+                    service_name: "webshop"
+                    k8s_cluster: "test::dc3"
+                    namespace: "webshop-production"
+                    method: "GET"
+                    status: "200"
       request_duration_seconds:
         metric_type: histogram
         group_by_logfield: "duration_sec"
