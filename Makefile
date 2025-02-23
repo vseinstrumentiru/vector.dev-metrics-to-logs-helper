@@ -78,7 +78,10 @@ endif
 .PHONY: validate-metrics-catalog-spec
 validate-metrics-catalog-spec: ## Validates all metrics-catalog.*.yml files
 	$(info $(M) Validate vars/metric-catalog.yml with json-schema...)
-	$(JV_BINARY) ./schema/vectordev-metrics-catalog.json ./ansible-playbook/vars/metrics-catalog.*.yml
+	@for file in ./ansible-playbook/vars/metrics-catalog.*.yml; do \
+        echo "Checking file: $$file"; \
+        $(JV_BINARY) ./schema/vectordev-metrics-catalog.json $$file && echo OK; \
+    done
 
 
 .PHONY: lint-vector-config
