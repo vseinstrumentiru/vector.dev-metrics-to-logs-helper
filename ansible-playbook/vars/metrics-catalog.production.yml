@@ -15,7 +15,7 @@ metrics_catalog:
         is_internal_traffic:
           eq: "1"
         namespace:
-          eq: "shop-production"
+          eq: "webshop-production"
         service_name:
           re: "^.*-canary(-.*)?$"
 
@@ -38,9 +38,9 @@ metrics_catalog:
                 # Порядок вычисления условий в группе: neq, nre, eq, re, (oneOfRe - не реализован)
                 eq: "/" # оператор и значение для сравнениея
               namespace:
-                eq: "shop-production"
+                eq: "webshop-production"
               service_name:
-                re: "^shop-service(?:-canary)?$"
+                re: "^webshop(?:-canary)?$"
               http_method:
                 eq: "GET"
           - selector: "Запросы на создание заказа в интернет магазине"
@@ -48,21 +48,45 @@ metrics_catalog:
               http_path:
                 re: "^/order$|^/order-fast$"
               namespace:
-                eq: "shop-production"
+                eq: "webshop-production"
               service_name:
-                re: "^shop-service(?:-canary)?$"
+                re: "^webshop(?:-canary)?$"
           - selector: "Открытие страницы производителя в интернет магазине"
             filter:
               http_path:
                 re: "^/vendor/(?P<name>([^/]+/)+)$"
                 label_override: "/vendor/:name"
               namespace:
-                eq: "shop-production"
+                eq: "webshop-production"
               service_name:
-                re: "^shop-service(?:-canary)?$"
+                re: "^webshop(?:-canary)?$"
       # Метрика vi_http_request_duration_seconds
       request_duration_seconds: # требуется для transforms.metrics-http-accesslog-k8s - бакеты определены там
         metric_type: histogram
         group_by_logfield: "duration_sec"
         label_logfield_mapping: *default_label_logfield_mapping
         event_selectors: *global_http_requests_total_event_selectors
+    vi_kubedns_http:
+      requests_total:
+        metric_type: counter
+        group_by_logfield: *global_http_requests_total_status_code
+        label_logfield_mapping: &kubedns_label_logfield_mapping
+          vhost: "http_host"
+          service_name: "service_name"
+          k8s_cluster: "cluster_name"
+          namespace: "namespace"
+          method: "http_method"
+          status: "http_status_code"
+        event_selectors: &kubedns_http_requests_total_event_selectors
+          # фильтры подходящих нам метирик
+          - selector: Монолит - входящие запросы по kubedns
+            filter:
+              namespace:
+                eq: "webshop-production"
+              http_host:
+                re: ".*local"
+      request_duration_seconds:
+        metric_type: histogram
+        group_by_logfield: "duration_sec"
+        label_logfield_mapping: *kubedns_label_logfield_mapping
+        event_selectors: *kubedns_http_requests_total_event_selectors

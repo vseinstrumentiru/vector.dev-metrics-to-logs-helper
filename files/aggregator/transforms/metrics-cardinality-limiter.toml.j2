@@ -1,0 +1,10 @@
+#
+# Трансформ для ограничения кардинальности метрик, если вдруг не задали label_override и насыпает много значений в метку
+#
+[transforms.metrics-cardinality-limiter]
+type = "tag_cardinality_limit"
+inputs = [ "metrics-http-accesslog-k8s"]
+mode = "probabilistic" # менее точный метод, но менее требователен к памяти
+cache_size_per_key = 5_120_000
+limit_exceeded_action = "drop_tag"
+value_limit = 1000

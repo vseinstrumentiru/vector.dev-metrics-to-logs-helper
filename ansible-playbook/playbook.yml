@@ -2,15 +2,14 @@
 - name: Configure aggregator
   hosts: aggregator
   vars:
-    development_mode: false
     vector_user_configs_paths:
       - "{{ playbook_dir }}/../files/aggregator"
     clickhouse_local_endpoint: "{{ hostvars[inventory_hostname].clickhouse_local_endpoint }}"
     vector_kafka_sasl_password: "{{ lookup('ansible.builtin.env', 'VECTOR_KAFKA_PASSWORD') }}"
     vector_kafka_sasl_username: "{{ lookup('ansible.builtin.env', 'VECTOR_KAFKA_USERNAME') }}"
   vars_files:
-    - "{{ playbook_dir }}/vars/metrics-catalog.yml"
-  ignore_errors: true
+    - "{{ playbook_dir }}/vars/metrics-catalog.{{ vector_environment }}.yml"
+  any_errors_fatal: true
   tasks:
     - name: "Local Build. Generate Vector Config Files"
       ansible.builtin.include_tasks: tasks/vector_config_generate_tasks.yml

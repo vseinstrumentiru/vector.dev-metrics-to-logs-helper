@@ -1,0 +1,149 @@
+# yaml-language-server: $schema=../schema/vectordev-metrics-catalog.json
+metrics_catalog:
+  defaults:
+    # в какой label из какого поля брать значение
+    label_logfield_mapping: &default_label_logfield_mapping
+      path: "http_path"
+      method: "http_method"
+      status: "http_status_code"
+      cluster_name: "cluster_name"
+      container_name: "container_name"
+      service_name: "service_name"
+  exclude_events:
+    - selector: Исключаем из метрик логи канарееченого релиза, которые получен для запросов из внутренней сети. Чтобы это не попадало SLO
+      filter:
+        is_internal_traffic:
+          eq: "1"
+        namespace:
+          eq: "webshop-production"
+        service_name:
+          re: "^.*-canary(-.*)?$"
+
+  metrics:
+    vi_http:
+      # Метрика vi_http_requests_total
+      requests_total: # требуется для transforms.metrics-http-accesslog-k8s
+        metric_type: counter
+        group_by_logfield: &global_http_requests_total_status_code http_status_code # по какому полю считаем, число событий (даст в итоге status=200: 1013, status=500: 1)
+        label_logfield_mapping: *default_label_logfield_mapping
+        event_selectors: &global_http_requests_total_event_selectors
+          # фильтры подходящих нам метирик
+          ##
+          ## Метрики Интернет магазина
+          ##
+          - selector:  "Запросы к главной странице интернет магазина"
+            filter:
+              http_path: # имя поля в событии лога (входящие данные трансформа vector.dev)
+                # возможные условия отбора: eq -> ==, neq -> !=, re -> match_any(), nre -> !match_any.
+                # Порядок вычисления условий в группе: neq, nre, eq, re, (oneOfRe - не реализован)
+                eq: "/" # оператор и значение для сравнениея
+              namespace:
+                eq: "webshop-production"
+              service_name:
+                re: "^webshop(?:-canary)?$"
+              http_method:
+                eq: "GET"
+          - selector: "Запросы на создание заказа в интернет магазине"
+            filter:
+              http_path:
+                re: "^/order$|^/order-fast$"
+              namespace:
+                eq: "webshop-production"
+              service_name:
+                re: "^webshop(?:-canary)?$"
+          - selector: "Открытие страницы производителя в интернет магазине"
+            filter:
+              http_path:
+                re: "^/vendor/(?P<name>([^/]+/)+)$"
+                label_override: "/vendor/:name"
+              namespace:
+                eq: "webshop-production"
+              service_name:
+                re: "^webshop(?:-canary)?$"
+            testdata: # указывать в ключах имена полей на выходе из transforms.http_accesslog-k8s
+              - test:
+                input_values:
+                  service_name: "webshop"
+                  container_name: "frontend"
+                  cluster_name: "test::dc2-old"
+                  http_path: "/vendor/gigant/"
+                  http_method: "GET"
+                  http_status_code: "200"
+                  namespace: "webshop-production"
+                expect:
+                  label_logfield_mapping: *default_label_logfield_mapping
+                  label_values:
+                    path: "/vendor/:name"
+                    method: "GET"
+                    status: "200"
+                    cluster_name: "test::dc2-old"
+                    container_name: "frontend"
+                    service_name: "webshop"
+              - test: canary
+                input_values:
+                  service_name: "webshop-canary"
+                  container_name: "frontend"
+                  cluster_name: "test::dc2-old"
+                  http_path: "/vendor/gigant-2/"
+                  http_method: "GET"
+                  http_status_code: "200"
+                  namespace: "webshop-production"
+                expect:
+                  label_logfield_mapping: *default_label_logfield_mapping
+                  label_values:
+                    path: "/vendor/:name"
+                    method: "GET"
+                    status: "200"
+                    cluster_name: "test::dc2-old"
+                    container_name: "frontend"
+                    service_name: "webshop-canary"
+      # Метрика vi_http_request_duration_seconds
+      request_duration_seconds: # требуется для transforms.metrics-http-accesslog-k8s - бакеты определены там
+        metric_type: histogram
+        group_by_logfield: "duration_sec"
+        label_logfield_mapping: *default_label_logfield_mapping
+        event_selectors: *global_http_requests_total_event_selectors
+    vi_kubedns_http:
+      requests_total:
+        metric_type: counter
+        group_by_logfield: *global_http_requests_total_status_code
+        label_logfield_mapping: &kubedns_label_logfield_mapping
+          vhost: "http_host"
+          service_name: "service_name"
+          k8s_cluster: "cluster_name"
+          namespace: "namespace"
+          method: "http_method"
+          status: "http_status_code"
+        event_selectors: &kubedns_http_requests_total_event_selectors
+          # фильтры подходящих нам метирик
+          - selector: Монолит - входящие запросы по kubedns
+            filter:
+              namespace:
+                eq: "webshop-production"
+              http_host:
+                re: ".*local"
+            testdata: # указывать в ключах имена полей на выходе из transforms.http_accesslog-k8s
+              - test:
+                input_values:
+                  service_name: "webshop"
+                  container_name: "frontend"
+                  cluster_name: "test::dc3"
+                  http_host: "any.local"
+                  http_path: "/vendor/gigant/"
+                  http_method: "GET"
+                  http_status_code: "200"
+                  namespace: "webshop-production"
+                expect:
+                  label_logfield_mapping: *default_label_logfield_mapping
+                  label_values:
+                    vhost: "any.local"
+                    service_name: "webshop"
+                    k8s_cluster: "test::dc3"
+                    namespace: "webshop-production"
+                    method: "GET"
+                    status: "200"
+      request_duration_seconds:
+        metric_type: histogram
+        group_by_logfield: "duration_sec"
+        label_logfield_mapping: *kubedns_label_logfield_mapping
+        event_selectors: *kubedns_http_requests_total_event_selectors

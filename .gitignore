@@ -1,2 +1,5 @@
 .generated/*
 .tools/*
+.vscode/settings.json
+ansible-playbook/playbook.tmp*
+

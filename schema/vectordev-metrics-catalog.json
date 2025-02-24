@@ -222,18 +222,55 @@
                 },
                 "filter": {
                     "$ref": "#/definitions/Filter",
-                    "description": "Условия отбора событий, накладываются на имена полей лога",
-                    "default": {
-                        "http_path": {
-                            "re": "^/product/(\\d+)$",
-                            "label_override": "/product/:id"
+                    "description": "Условия отбора событий, накладываются на имена полей лога"
+                },
+                "testdata": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "test": {
+                                "oneOf": [
+                                    {
+                                        "type": "null"
+                                    },
+                                    {
+                                        "type": "string"
+                                    }
+                                ]
+                            },
+                            "input_values": {
+                                "type": "object",
+                                "minProperties": 1,
+                                "additionalProperties": {
+                                    "type": "string"
+                                }
+                            },
+                            "expect": {
+                                "type": "object",
+                                "properties": {
+                                    "label_logfield_mapping": {
+                                        "$ref": "#/definitions/LabelLogfieldMapping"
+                                    },
+                                    "label_values": {
+                                        "type": "object",
+                                        "minProperties": 1,
+                                        "additionalProperties": {
+                                            "type": "string"
+                                        }
+                                    }
+                                },
+                                "required": [
+                                    "label_logfield_mapping",
+                                    "label_values"
+                                ]
+                            }
                         },
-                        "namespace": {
-                            "eq": "service_name-production"
-                        },
-                        "service_name": {
-                            "re": "^service(?:-canary)?$"
-                        }
+                        "required": [
+                            "input_values",
+                            "expect"
+                        ]
                     }
                 }
             },

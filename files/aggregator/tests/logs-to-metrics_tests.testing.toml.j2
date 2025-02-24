@@ -1,0 +1,287 @@
+{% if vector_environment == 'testing'%}
+###############################################################################
+# Tests: transforms.metrics-http-accesslog-k8s_reducer_vi_http_requests_total
+# ВНИМАНИЕ! Тест привязан к metrics-catalog.testing.yml, если он изменить имя в vi_http/requests_total, то тест сломается!
+###############################################################################
+
+[[tests]]
+  name = "transforms.metrics-http-accesslog-k8s_reducer_vi_http_requests_total: 050.1 it filters events correctly"
+
+  [[tests.inputs]]
+    insert_at = "http_accesslog-k8s"
+    type = "log"
+    [tests.inputs.log_fields]
+      # Данные о сервисе
+      service_name = "webshop"
+      namespace = "webshop-production"
+      # Данные Kubernetes (которые еще не изъяты)
+      "kubernetes.pod_labels.\"pod-template-hash\"" = "85f59bbfd6"
+      "kubernetes.pod_node_name" = "ox2-kub-prod18"
+      "kubernetes.pod_uid" = "93bde4d0-9731-4785-a80e-cd27ba8ad7c2"
+      "kubernetes.pod_owner" = "test::pod_owner"
+      'kubernetes.pod_annotations."containers.vitech.team/frontend.log_source"' = "http_accesslog"
+      # Данные контейнера извлеченные ранее
+      cluster_name = "test::dc2-old"
+      container_name = "frontend"
+      container_image = "registry-sd.vi.net/site-vi/vi-ru/frontend:202109140836-master"
+      pod_name = "webshop-bff-85f59bbfd6-pcshd"
+      pod_ip = "176.59.54.236"
+      deployment = "webshop"
+      # Обработанное сообщение лога
+      "parsed_accesslog_message.request_id" = "6a432b1e521b042789c1e984aee21127"
+      "parsed_accesslog_message.user" = ""
+      "parsed_accesslog_message.address" = "176.59.54.236"
+      "parsed_accesslog_message.bytes_received"= 4799
+      "parsed_accesslog_message.bytes_sent" = 14720
+      "parsed_accesslog_message.protocol" = "HTTP/1.1"
+      "parsed_accesslog_message.scheme" = "https"
+      "parsed_accesslog_message.method" = "GET"
+      "parsed_accesslog_message.host" = "nn.vi.ru"
+      "parsed_accesslog_message.path" = "/vendor/gigant/"
+      "parsed_accesslog_message.request_uri" = "/vendor/gigant/?brand_product_block_ab=0"
+      "parsed_accesslog_message.request_query" = "brand_product_block_ab=0"
+      "parsed_accesslog_message.referrer" = "https://www.vi.ru/"
+      "parsed_accesslog_message.user_agent" = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0"
+      "parsed_accesslog_message.request_time" = 0.3
+      "parsed_accesslog_message.status" = 200
+      "parsed_accesslog_message.upstream_addr" = "127.0.0.1:4000"
+      "parsed_accesslog_message.upstream_bytes_received" = 14693
+      "parsed_accesslog_message.upstream_response_time" = 0.217
+      "parsed_accesslog_message.upstream_status" = "200"
+
+  [[tests.outputs]]
+    extract_from = "metrics-http-accesslog-k8s_reducer_vi_http_requests_total"
+
+    [[tests.outputs.conditions]]
+      type = "vrl"
+      source = '''
+        assert_eq!(.http_request_id, "6a432b1e521b042789c1e984aee21127")
+      '''
+
+[[tests]]
+  name = "transforms.metrics-http-accesslog-k8s: 050.2 it filters out not matching events (by http_path)"
+  no_outputs_from = ["metrics-http-accesslog-k8s"]
+
+  [[tests.inputs]]
+    insert_at = "http_accesslog-k8s"
+    type = "log"
+    [tests.inputs.log_fields]
+      # Данные о сервисе
+      service_name = "personal-cabinet"
+      namespace = "webshop-production"
+      # Данные Kubernetes (которые еще не изъяты)
+      "kubernetes.pod_labels.\"pod-template-hash\"" = "85f59bbfd6"
+      "kubernetes.pod_node_name" = "ox2-kub-prod18"
+      "kubernetes.pod_uid" = "93bde4d0-9731-4785-a80e-cd27ba8ad7c2"
+      "kubernetes.pod_owner" = "test::pod_owner"
+      'kubernetes.pod_annotations."containers.vitech.team/frontend.log_source"' = "http_accesslog"
+      # Данные контейнера извлеченные ранее
+      cluster_name = "test::dc2-old"
+      container_name = "frontend"
+      container_image = "registry-sd.vi.net/site-vi/vi-ru/frontend:202109140836-master"
+      pod_name = "personal-cabinet-bff-85f59bbfd6-pcshd"
+      pod_ip = "176.59.54.236"
+      deployment = "personal-cabinet-bff"
+      # Обработанное сообщение лога из transform:http_accesslog-k8s
+      "parsed_accesslog_message.request_id" = "6a432b1e521b042789c1e984aee21127"
+      "parsed_accesslog_message.user" = ""
+      "parsed_accesslog_message.address" = "176.59.54.236"
+      "parsed_accesslog_message.bytes_received"= 4799
+      "parsed_accesslog_message.bytes_sent" = 14720
+      "parsed_accesslog_message.protocol" = "HTTP/1.1"
+      "parsed_accesslog_message.scheme" = "https"
+      "parsed_accesslog_message.method" = "GET"
+      "parsed_accesslog_message.host" = "nn.vi.ru"
+      "parsed_accesslog_message.path" = "/TEST:PATH_NOT_EXISTS/"
+      "parsed_accesslog_message.request_uri" = "/TEST:PATH_NOT_EXISTS/?q=query"
+      "parsed_accesslog_message.request_query" = "q=query"
+      "parsed_accesslog_message.referrer" = "https://www.vi.ru/"
+      "parsed_accesslog_message.user_agent" = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0"
+      "parsed_accesslog_message.request_time" = 0.3
+      "parsed_accesslog_message.status" = 200
+      "parsed_accesslog_message.upstream_addr" = "127.0.0.1:4000"
+      "parsed_accesslog_message.upstream_bytes_received" = 14693
+      "parsed_accesslog_message.upstream_response_time" = 0.217
+      "parsed_accesslog_message.upstream_status" = "200"
+
+
+###############################################################################
+# Tests: transforms.metrics-http-accesslog-k8s_reducer_vi_http_requests_total
+###############################################################################
+
+[[tests]]
+  name = "transforms.metrics-http-accesslog-k8s_reducer_vi_http_requests_total: 050.4 it prepares http_accesslog event (replaces http_path value with label_override in re)"
+
+  [[tests.inputs]]
+    insert_at = "metrics-http-accesslog-k8s_exclude_filter"
+    type = "log"
+
+    [tests.inputs.log_fields]
+      service_name = "webshop"
+      namespace = "webshop-production"
+      # Данные Kubernetes (которые еще не изъяты)
+      "kubernetes.pod_labels.\"pod-template-hash\"" = "85f59bbfd6"
+      "kubernetes.pod_node_name" = "ox2-kub-prod18"
+      "kubernetes.pod_uid" = "93bde4d0-9731-4785-a80e-cd27ba8ad7c2"
+      "kubernetes.pod_owner" = "test::pod_owner"
+      'kubernetes.pod_annotations."containers.vitech.team/frontend.log_source"' = "http_accesslog"
+      # Данные контейнера извлеченные ранее
+      cluster_name = "test::dc2-old"
+      container_name = "frontend"
+      container_image = "registry-sd.vi.net/site-vi/vi-ru/frontend:202109140836-master"
+      pod_name = "webshop-85f59bbfd6-pcshd"
+      pod_ip = "176.59.54.236"
+      deployment = "webshop"
+      # Обработанное сообщение лога
+      "http_request_id" = "6a432b1e521b042789c1e984aee21128"
+      "http_url" = "https://nn.vi.ru/vendor/gigant/?brand_product_block_ab=0"
+      "http_scheme" = "https"
+      "http_host" = "nn.vi.ru"
+      "http_port" = 443
+      "http_method" = "GET"
+      "http_path" = "/vendor/gigant/"
+      "http_query_string" = "brand_product_block_ab=0"
+      "http_version" = "HTTP/1.1"
+      "http_referer" = "https://www.vi.ru/"
+      "http_user_agent" = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0"
+      "http_status_code" = 200
+      "duration_sec" = 0.300
+      "traceparent" = ""
+      "trace_id" = ""
+      "network_bytes_written" = 14720
+      "network_client_ip" = "176.59.54.236"
+      "upstream_addr" = "127.0.0.1:4000"
+      "upstream_network_bytes_written" = 14693
+      "upstream_duration_sec" = 0.217
+
+  [[tests.outputs]]
+    extract_from = "metrics-http-accesslog-k8s_reducer_vi_http_requests_total"
+
+    [[tests.outputs.conditions]]
+      type = "vrl"
+      source = '''
+        # Должна была произайти замена .http_path для снижения кардинальности метрики по этой метке
+        assert_eq!(.http_path, "/vendor/:name")
+       '''
+
+###############################################################################
+# Tests: transforms.metrics-http-accesslog-k8s-filter-metric_vi_kubedns_http_requests_total
+###############################################################################
+
+[[tests]]
+  name = "transforms.metrics-http-accesslog-k8s_reducer_vi_kubedns_http_requests_total: 050.5 it skips events not from host hvaing local suffix"
+  no_outputs_from = ["metrics-http-accesslog-k8s-filter-metric_vi_kubedns_http_requests_total"]
+
+  [[tests.inputs]]
+    insert_at = "metrics-http-accesslog-k8s_exclude_filter"
+    type = "log"
+
+    [tests.inputs.log_fields]
+      service_name = "webshop"
+      namespace = "webshop-production"
+      # Данные Kubernetes (которые еще не изъяты)
+      "kubernetes.pod_labels.\"pod-template-hash\"" = "85f59bbfd6"
+      "kubernetes.pod_node_name" = "ox2-kub-prod18"
+      "kubernetes.pod_uid" = "93bde4d0-9731-4785-a80e-cd27ba8ad7c2"
+      "kubernetes.pod_owner" = "test::pod_owner"
+      'kubernetes.pod_annotations."containers.vitech.team/frontend.log_source"' = "http_accesslog"
+      # Данные контейнера извлеченные ранее
+      cluster_name = "test::dc2-old"
+      container_name = "frontend"
+      container_image = "registry-sd.vi.net/site-vi/vi-ru/frontend:202109140836-master"
+      pod_name = "webshop-85f59bbfd6-pcshd"
+      pod_ip = "176.59.54.236"
+      deployment = "webshop"
+      # Обработанное сообщение лога
+      "http_request_id" = "6a432b1e521b042789c1e984aee21128"
+      "http_url" = "https://nn.vi.ru/vendor/gigant/?brand_product_block_ab=0"
+      "http_scheme" = "https"
+      "http_host" = "nn.i-m-a-host-without-l-o-c-a-l-suffix.ru"
+      "http_port" = 443
+      "http_method" = "GET"
+      "http_path" = "/vendor/gigant/"
+      "http_query_string" = "brand_product_block_ab=0"
+      "http_version" = "HTTP/1.1"
+      "http_referer" = "https://www.vi.ru/"
+      "http_user_agent" = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:108.0) Gecko/20100101 Firefox/108.0"
+      "http_status_code" = 200
+      "duration_sec" = 0.300
+      "traceparent" = ""
+      "trace_id" = ""
+      "network_bytes_written" = 14720
+      "network_client_ip" = "176.59.54.236"
+      "upstream_addr" = "127.0.0.1:4000"
+      "upstream_network_bytes_written" = 14693
+      "upstream_duration_sec" = 0.217
+
+###
+### GENERATED TESTS 2
+###
+{% for namespace, metrics in metrics_catalog.metrics.items() -%}
+  {%- for metric_name, metric_conf in metrics.items() -%}
+    {%- for selector_conf in metric_conf.event_selectors -%}
+
+      {%- if selector_conf.testdata is defined -%}
+          {%- set metric_namespace = namespace -%}{#- если пустое, то имя метки должно начинаться с _ -#}
+          {%- set metric_full_name = metric_namespace + "_" + metric_name -%}
+          {%- set selector_index = (loop.index | string) -%}
+
+        {%- for test_conf in selector_conf.testdata -%}
+          {%- set test_name = "transforms.metrics-http-accesslog-k8s: check metric " + metric_full_name + "(sel:" + selector_index + ", test:" + (loop.index | string) + ")" -%}
+
+[[tests]]
+  name = "{{ test_name }}"
+
+  [[tests.inputs]]
+    insert_at = "metrics-http-accesslog-k8s_exclude_filter"
+    type = "log"
+
+    [tests.inputs.log_fields]
+      # сгенерированные строки
+      {% for logfield_name, logfield_value in test_conf.input_values.items() -%}
+      "{{ logfield_name }}" = "{{ logfield_value }}"
+      {# newline #}
+      {%- endfor %}
+
+      # Остальное нужное для обраотки
+      "duration_sec" = 0.3
+      "kubernetes.pod_node_name" = "ox2-kub-prod18"
+
+  [[tests.outputs]]
+    extract_from = "metrics-http-accesslog-k8s"
+
+    [[tests.outputs.conditions]]
+      type = "vrl"
+      source = '''
+        assert!(!exists(.tags.pod_name))
+
+        {# проверить имя метрики и перфикса -#}
+
+        assert_eq!(.name, "{{ metric_name }}")
+        assert_eq!(.namespace, "{{ metric_namespace }}")
+        assert!(includes([.name], "{{ metric_name }}"))
+
+        {#  проверить мапинг, для начала можно сравнить количество, если не совпадает, то выборсить ошибоку ansible -#}
+        {%- if metric_conf.label_logfield_mapping | length != test_conf.expect.label_logfield_mapping | length -%}
+          {{ "Ошибка: Длина массива не равна количеству элементов в словаре!" | fail }}
+        {%- endif -%}
+
+        {% for label_name, _ in metric_conf.label_logfield_mapping.items() -%}
+        {# проверяем что метрика имеет нужные label -#}
+        assert!(exists(.tags.{{ label_name }}))
+        {# проверить совпадения значения label метрик по label_logfield_mapping из метрики -#}
+        assert_eq!(.tags.{{ label_name }}, "{{ test_conf.expect.label_values[label_name] }}")
+        {% endfor %}
+{{ "" }}
+      '''
+{# newline #}
+        {%- endfor %}
+      {%- endif %}
+    {%- endfor %}
+  {%- endfor %}
+{% endfor %}
+
+
+
+{# end --> if vector_environment == 'testing' #}
+{% endif %}

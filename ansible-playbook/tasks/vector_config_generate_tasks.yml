@@ -2,7 +2,7 @@
 - name: Remove generated vector configs dir
   ansible.builtin.file:
     state: absent
-    path: "{{ playbook_dir }}/../.generated/vector_configs/"
+    path: "{{ playbook_dir }}/../.generated/vector_config/"
   delegate_to: localhost
 
 - name: Find user-defined configs
@@ -25,7 +25,7 @@
 - name: Create generated vector configs dir
   ansible.builtin.file:
     state: directory
-    path: "{{ playbook_dir }}/.generated/vector_configs/"
+    path: "{{ playbook_dir }}/../.generated/vector_config/"
     mode: 0777
   delegate_to: localhost
 
