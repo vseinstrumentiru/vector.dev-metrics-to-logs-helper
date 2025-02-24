@@ -6,7 +6,7 @@ rwildcard = $(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(
 TARGET_NAME = $(firstword $(MAKECMDGOALS))
 RUN_ARGS = $(filter-out $@, $(MAKEOVERRIDES) $(MAKECMDGOALS))
 OS := $(shell uname -s)
-TOOLS_DIR ?= .tools
+TOOLS_DIR ?= $(PWD)/.tools
 SUDO_PASSWORD ?= human
 
 VECTOR_VERSION ?= 0.43.0
@@ -31,10 +31,12 @@ JV_BINARY := $(TOOLS_DIR)/jv_$(JV_VERSION)_$(OS)_amd64
 
 YQ_BINARY_URL := https://github.com/mikefarah/yq/releases/download/v$(YQ_VERSION)/yq_$(OS)_amd64
 
+.PHONY: $(TOOLS_DIR)
+$(TOOLS_DIR):
+	mkdir -p $(TOOLS_DIR)
 
 .PHONY: install-dependencies
-install-dependencies: download-vector-bin ## Install required dependencies
-	mkdir -p $(TOOLS_DIR)
+install-dependencies: | $(TOOLS_DIR) download-vector-bin ## Install required dependencies
 ifeq (,$(wildcard $(YQ_BINARY)))
 	wget -qO $(YQ_BINARY) $(YQ_BINARY_URL) --show-progress && chmod +x $(YQ_BINARY)
 endif
