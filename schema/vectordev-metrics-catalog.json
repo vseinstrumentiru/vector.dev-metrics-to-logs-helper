@@ -1,5 +1,5 @@
 {
-    "$id": "https://github.com/vseinstrumentiru/devopsconf2024/blob/main/resentation-from-efk-to-vector-and-clickhouse/vector-metrics-refactored/schema/vectordev-metrics-catalog.json",
+    "$id": "https://github.com/vseinstrumentiru/vector.dev-metrics-to-logs-helper/blob/main/schema/vectordev-metrics-catalog.json",
     "$schema": "http://json-schema.org/draft-07/schema#",
     "$ref": "#/definitions/Schema",
     "definitions": {
