@@ -1,5 +1,5 @@
 {
-    "$id": "https://github.com/vseinstrumentiru/vector.dev-metrics-to-logs-helper/blob/main/schema/vectordev-metrics-catalog.json",
+    "$id": "https://github.com/vseinstrumentiru/vector.dev-metrics-to-logs-helper/blob/main/schema/vectordev-metrics-catalog.json#v1.2",
     "$schema": "http://json-schema.org/draft-07/schema#",
     "$ref": "#/definitions/Schema",
     "definitions": {
@@ -250,9 +250,6 @@
                             "expect": {
                                 "type": "object",
                                 "properties": {
-                                    "label_logfield_mapping": {
-                                        "$ref": "#/definitions/LabelLogfieldMapping"
-                                    },
                                     "label_values": {
                                         "type": "object",
                                         "minProperties": 1,
@@ -262,7 +259,6 @@
                                     }
                                 },
                                 "required": [
-                                    "label_logfield_mapping",
                                     "label_values"
                                 ]
                             }

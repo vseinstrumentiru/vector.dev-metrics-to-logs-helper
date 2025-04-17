@@ -1,0 +1,71 @@
+###############################################################################
+# GENERATED METRICS TESTS
+# ВНИМАНИЕ! Тесты привязаны к metrics_catalog -> metrics-catalog.{{vector_environment}}.yml
+###############################################################################
+
+{% for namespace, metrics in metrics_catalog.metrics.items() -%}
+  {%- for metric_name, metric_conf in metrics.items() -%}
+    {%- for selector_conf in metric_conf.event_selectors -%}
+
+      {%- if selector_conf.testdata is defined -%}
+          {%- set metric_namespace = namespace -%}{#- если пустое, то имя метки должно начинаться с _ -#}
+          {%- set metric_full_name = metric_namespace + "_" + metric_name -%}
+          {%- set selector_index = (loop.index0 | string) -%}
+
+        {%- for test_conf in selector_conf.testdata -%}
+          {%- set test_index = (loop.index0 | string) -%}
+          {%- set test_name = "transforms.metrics-http-accesslog-k8s: check metric " + metric_full_name + "/selector[" + selector_index + "]/test[" + test_index + "]" -%}
+
+[[tests]]
+  name = "{{ test_name }}"
+
+  [[tests.inputs]]
+    insert_at = "metrics-http-accesslog-k8s_exclude_filter"
+    type = "log"
+
+  {% if not selector_conf.filter.keys() is subset(test_conf.input_values.keys()) %}
+>>> AnsibleTemplateError: Ошибка при генерации кода теста из шаблона. Тест: {{ test_name }}. Ключи из .selector[{{ selector_index}}].filter должны встречаться в selector[{{ selector_index}}]/test[{{test_index}}].input_values.
+  {% endif %}
+
+    [tests.inputs.log_fields]
+      {% for logfield_name, logfield_value in test_conf.input_values.items() -%}
+      "{{ logfield_name | replace('"','\\"') | safe }}" = "{{ logfield_value | replace('"','\\"') | safe }}"
+      {# newline #}
+      {%- endfor %}
+
+  [[tests.outputs]]
+    extract_from = "metrics-http-accesslog-k8s"
+  {# Выводим текст чтобы в случае ошибки конфигурации упасть при валидации #}
+  {%- set metric_def_labels = metric_conf.label_logfield_mapping.keys() | sort | join(', ') -%}
+  {%- set metric_test_expect_labels = test_conf.expect.label_values.keys() | sort | join(', ') -%}
+  {%- set metric_test_labels_ok = (metric_def_labels == metric_test_expect_labels) -%}
+  {% if not metric_test_labels_ok %}{# сообщение без переносов должно быть, чтобы при сбое валидации в vector было видно целиком #}
+>>> AnsibleTemplateError: Ошибка при генерации кода теста из шаблона. Тест: {{ test_name }}. Должно быть полное соответствие меток в label_logfield_mapping метрики и label_values теста. Сравните: label_logfield_mapping = [{{ metric_def_labels }}] и selector[{{ selector_index}}]/test[{{test_index}}].expect.label_values = [{{ metric_test_expect_labels }}]
+  {% endif %}
+
+    [[tests.outputs.conditions]]
+      type = "vrl"
+      source = '''
+        assert!(!exists(.tags.pod_name))
+        {# проверить имя метрики и перфикса -#}
+        assert_eq!(.namespace, "{{ metric_namespace }}")
+        assert!(includes([{{ metrics.keys() | map('to_json') | join(', ') }}], "{{ metric_name }}"))
+
+        {% for label_name, _ in metric_conf.label_logfield_mapping.items() -%}
+        {# проверяем что метрика имеет нужные label -#}
+        assert!(exists(.tags.{{ label_name }}))
+        {# проверить совпадения значения label метрик по label_logfield_mapping из метрики -#}
+        {% if metric_test_labels_ok -%}
+        assert_eq!(.tags.{{ label_name }}, "{{ test_conf.expect.label_values[label_name] }}")
+        {% else -%}
+        ^^ см. AnsibleTemplateError выше по тексту
+        {% endif -%}
+        {% endfor %}
+{{ "" }}
+      '''
+{# newline #}
+        {%- endfor %}
+      {%- endif %}
+    {%- endfor %}
+  {%- endfor %}
+{% endfor %}
