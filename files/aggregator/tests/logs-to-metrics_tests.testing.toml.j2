@@ -227,7 +227,7 @@
           {%- set selector_index = (loop.index | string) -%}
 
         {%- for test_conf in selector_conf.testdata -%}
-          {%- set test_name = "transforms.metrics-http-accesslog-k8s: check metric " + metric_full_name + "(sel:" + selector_index + ", test:" + (loop.index | string) + ")" -%}
+          {%- set test_name = "transforms.metrics-http-accesslog-k8s: check metric " + metric_full_name + "(selector #" + selector_index + ", test #" + (loop.index | string) + ")" -%}
 
 [[tests]]
   name = "{{ test_name }}"
@@ -239,7 +239,7 @@
     [tests.inputs.log_fields]
       # сгенерированные строки
       {% for logfield_name, logfield_value in test_conf.input_values.items() -%}
-      "{{ logfield_name }}" = "{{ logfield_value }}"
+      "{{ logfield_name | replace('"','\\"') | safe }}" = "{{ logfield_value | replace('"','\\"') | safe }}"
       {# newline #}
       {%- endfor %}
 
