@@ -31,7 +31,7 @@ metrics_catalog:
           ##
           ## Метрики Интернет магазина
           ##
-          - selector:  "Запросы к главной странице интернет магазина"
+          - selector: "Запросы к главной странице интернет магазина"
             filter:
               http_path: # имя поля в событии лога (входящие данные трансформа vector.dev)
                 # возможные условия отбора: eq -> ==, neq -> !=, re -> match_any(), nre -> !match_any.
@@ -114,8 +114,8 @@ metrics_catalog:
           namespace: "namespace"
           method: "http_method"
           status: "http_status_code"
-        event_selectors: &kubedns_http_requests_total_event_selectors
-          # фильтры подходящих нам метирик
+        event_selectors:
+          &kubedns_http_requests_total_event_selectors # фильтры подходящих нам метирик
           - selector: Монолит - входящие запросы по kubedns
             filter:
               namespace:
