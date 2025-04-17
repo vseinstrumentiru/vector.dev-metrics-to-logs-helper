@@ -70,8 +70,9 @@ metrics_catalog:
                   http_method: "GET"
                   http_status_code: "200"
                   namespace: "webshop-production"
+                  duration_sec: "0.3"
+                  kubernetes.pod_node_name: "ox2-kub-prod18"
                 expect:
-                  label_logfield_mapping: *default_label_logfield_mapping
                   label_values:
                     path: "/vendor/:name"
                     method: "GET"
@@ -88,8 +89,9 @@ metrics_catalog:
                   http_method: "GET"
                   http_status_code: "200"
                   namespace: "webshop-production"
+                  duration_sec: "0.3"
+                  kubernetes.pod_node_name: "ox2-kub-prod18"
                 expect:
-                  label_logfield_mapping: *default_label_logfield_mapping
                   label_values:
                     path: "/vendor/:name"
                     method: "GET"
@@ -133,8 +135,9 @@ metrics_catalog:
                   http_method: "GET"
                   http_status_code: "200"
                   namespace: "webshop-production"
+                  duration_sec: "0.3"
+                  kubernetes.pod_node_name: "ox2-kub-prod18"
                 expect:
-                  label_logfield_mapping: *default_label_logfield_mapping
                   label_values:
                     vhost: "any.local"
                     service_name: "webshop"
