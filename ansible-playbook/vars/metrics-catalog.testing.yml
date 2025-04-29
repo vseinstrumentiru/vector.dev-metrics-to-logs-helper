@@ -12,12 +12,16 @@ metrics_catalog:
   exclude_events:
     - selector: Исключаем из метрик логи канарееченого релиза, которые получен для запросов из внутренней сети. Чтобы это не попадало SLO
       filter:
-        is_internal_traffic:
-          eq: "1"
         namespace:
           eq: "webshop-production"
+        is_internal_traffic:
+          eq: "1"
         service_name:
           re: "^.*-canary(-.*)?$"
+    - selector: Исключаем /health(z)
+      filter:
+        http_path:
+          re: "/healthz?"
 
   metrics:
     vi_http:
@@ -33,33 +37,33 @@ metrics_catalog:
           ##
           - selector: "Запросы к главной странице интернет магазина"
             filter:
+              namespace:
+                eq: "webshop-production"
+              service_name:
+                re: "^webshop(?:-canary)?$"
               http_path: # имя поля в событии лога (входящие данные трансформа vector.dev)
                 # возможные условия отбора: eq -> ==, neq -> !=, re -> match_any(), nre -> !match_any.
                 # Порядок вычисления условий в группе: neq, nre, eq, re, (oneOfRe - не реализован)
                 eq: "/" # оператор и значение для сравнениея
-              namespace:
-                eq: "webshop-production"
-              service_name:
-                re: "^webshop(?:-canary)?$"
               http_method:
                 eq: "GET"
           - selector: "Запросы на создание заказа в интернет магазине"
             filter:
-              http_path:
-                re: "^/order$|^/order-fast$"
               namespace:
                 eq: "webshop-production"
               service_name:
                 re: "^webshop(?:-canary)?$"
+              http_path:
+                re: "^/order$|^/order-fast$"
           - selector: "Открытие страницы производителя в интернет магазине"
             filter:
+              namespace:
+                eq: "webshop-production"
+              service_name:
+                re: "^webshop(?:-canary)?$"
               http_path:
                 re: "^/vendor/(?P<name>([^/]+/)+)$"
                 label_override: "/vendor/:name"
-              namespace:
-                eq: "webshop-production"
-              service_name:
-                re: "^webshop(?:-canary)?$"
             testdata: # указывать в ключах имена полей на выходе из transforms.http_accesslog-k8s
               - test:
                 input_values:
@@ -83,12 +87,12 @@ metrics_catalog:
               - test: canary
                 input_values:
                   service_name: "webshop-canary"
+                  namespace: "webshop-production"
                   container_name: "frontend"
                   cluster_name: "test::dc2-old"
                   http_path: "/vendor/gigant-2/"
                   http_method: "GET"
                   http_status_code: "200"
-                  namespace: "webshop-production"
                   duration_sec: "0.3"
                   kubernetes.pod_node_name: "ox2-kub-prod18"
                 expect:
@@ -101,11 +105,11 @@ metrics_catalog:
                     service_name: "webshop-canary"
           - selector: "Все запросы на Webshop Circuit Breaker"
             filter:
+              service_name:
+                eq: "webshop-cb"
               http_path:
                 re: ".*"
                 label_override: ":url_path"
-              service_name:
-                eq: "webshop-cb"
             testdata: # указывать в ключах имена полей на выходе из transforms.http_accesslog-k8s
               - test:
                 input_values:

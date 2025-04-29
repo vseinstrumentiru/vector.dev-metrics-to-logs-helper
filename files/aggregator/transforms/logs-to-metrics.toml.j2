@@ -52,28 +52,22 @@ inputs = ["metrics-http-accesslog-k8s_exclude_filter"]
 #
 drop_on_abort = true
 source = '''
-    is_allowed = false
-
 {% for event_selector in _metric_conf.event_selectors -%}
     {%- set selector_id = loop.index0 | string %}
     {%- set selector_name = event_selector.selector %}
     {%- set source_ref = _metric_full_name + "/selector[" + selector_id + "]: " + selector_name %}
 
     # source_ref: {{ source_ref }}
-    is_selector_match = {{ build_selector_matching_expr(event_selector, source_ref) }}
-    is_allowed = is_allowed || is_selector_match
-
-  {%- for logfield_name, operator in event_selector.filter.items() %}
+    if (   {{ build_selector_matching_expr(event_selector, source_ref) }}   ) {
+{% for logfield_name, operator in event_selector.filter.items() %}
     {%- if operator.re is defined %}
       {%- if operator.re != "" %}
         {%- if operator.label_override is defined and operator.label_override != "" %}
-{{ '' }}
-    # нужно снижение кардинальности значений label_override
-    if ( is_selector_match ) {
+        ## ! нужно снижение кардинальности значений - установлен label_override
 {# logfield_name всегда строка и валидируется через json-schaema в исходных данных #}
         .{{ logfield_name }} = to_string!(.{{ logfield_name }});
         .{{ logfield_name }} = replace(.{{ logfield_name }}, r'{{ operator.re }}', s'{{ operator.label_override }}');
-    }
+        #
         {%- else %}
           {# no label_override #}
         {%- endif %}
@@ -83,12 +77,17 @@ source = '''
 {{ '' }}
     {%- endif %}
   {%- endfor %}
-
+true;
+    }
+    {%- if not loop.last %}
+    else {{' '}}
+    {%- else %}
+    else {
+      abort # совпадений не было найдено, удалить это событие
+    }
+    {%- endif %}
 {% endfor %}
 
-if ( !is_allowed ) {
-    abort # совпадений не было найдено, удалить это событие
-}
 '''
 {# newline #}
 
@@ -121,10 +120,6 @@ inputs = [ "{{ _remap_name }}" ]
 
 
 ###############################################################################
-
-
-
-
 
 [transforms.metrics-http-accesslog-k8s]
 type = "filter"

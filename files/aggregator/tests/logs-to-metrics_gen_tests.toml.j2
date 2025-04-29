@@ -3,6 +3,8 @@
 ###
 {% set _metrics_catalog = metrics_catalog %}
 
+# Metrics selectors tests
+
 {% for namespace, metrics in _metrics_catalog.metrics.items() -%}
   {%- for metric_name, metric_conf in metrics.items() -%}
     {%- for selector_conf in metric_conf.event_selectors -%}
@@ -28,7 +30,6 @@
   {% endif %}
 
     [tests.inputs.log_fields]
-      # сгенерированные строки
       {% for logfield_name, logfield_value in test_conf.input_values.items() -%}
       "{{ logfield_name | replace('"','\\"') | safe }}" = "{{ logfield_value | replace('"','\\"') | safe }}"
       {# newline #}
