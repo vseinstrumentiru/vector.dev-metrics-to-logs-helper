@@ -99,6 +99,32 @@ metrics_catalog:
                     cluster_name: "test::dc2-old"
                     container_name: "frontend"
                     service_name: "webshop-canary"
+          - selector: "Все запросы на Webshop Circuit Breaker"
+            filter:
+              http_path:
+                re: ".*"
+                label_override: ":url_path"
+              service_name:
+                eq: "webshop-cb"
+            testdata: # указывать в ключах имена полей на выходе из transforms.http_accesslog-k8s
+              - test:
+                input_values:
+                  http_path: "/brand/abc-123/sub-1234/"
+                  http_method: "GET"
+                  http_status_code: "200"
+                  duration_sec: "2.1"
+                  cluster_name: "any_dc"
+                  container_name: "any_cn"
+                  kubernetes.pod_node_name: "ox2-kub-prod18"
+                  service_name: "webshop-cb"
+                expect:
+                  label_values:
+                    path: ":url_path"
+                    method: "GET"
+                    status: "200"
+                    cluster_name: "any_dc"
+                    container_name: "any_cn"
+                    service_name: "webshop-cb"
       # Метрика vi_http_request_duration_seconds
       request_duration_seconds: # требуется для transforms.metrics-http-accesslog-k8s - бакеты определены там
         metric_type: histogram

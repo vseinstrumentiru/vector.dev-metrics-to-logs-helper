@@ -1,9 +1,9 @@
-###############################################################################
-# GENERATED METRICS TESTS
-# ВНИМАНИЕ! Тесты привязаны к metrics_catalog -> metrics-catalog.{{vector_environment}}.yml
-###############################################################################
+###
+### GENERATED TESTS form metrics_catalog.{{vector_environment}}.yml/*testdata
+###
+{% set _metrics_catalog = metrics_catalog %}
 
-{% for namespace, metrics in metrics_catalog.metrics.items() -%}
+{% for namespace, metrics in _metrics_catalog.metrics.items() -%}
   {%- for metric_name, metric_conf in metrics.items() -%}
     {%- for selector_conf in metric_conf.event_selectors -%}
 
@@ -14,7 +14,7 @@
 
         {%- for test_conf in selector_conf.testdata -%}
           {%- set test_index = (loop.index0 | string) -%}
-          {%- set test_name = "transforms.metrics-http-accesslog-k8s: check metric " + metric_full_name + "/selector[" + selector_index + "]/test[" + test_index + "]" -%}
+          {%- set test_name = "metrics_catalog: check metric " + metric_full_name + "/selector[" + selector_index + "]/test[" + test_index + "]" -%}
 
 [[tests]]
   name = "{{ test_name }}"
@@ -28,6 +28,7 @@
   {% endif %}
 
     [tests.inputs.log_fields]
+      # сгенерированные строки
       {% for logfield_name, logfield_value in test_conf.input_values.items() -%}
       "{{ logfield_name | replace('"','\\"') | safe }}" = "{{ logfield_value | replace('"','\\"') | safe }}"
       {# newline #}
@@ -35,23 +36,26 @@
 
   [[tests.outputs]]
     extract_from = "metrics-http-accesslog-k8s"
-  {# Выводим текст чтобы в случае ошибки конфигурации упасть при валидации #}
+
+    {# Выводим текст чтобы в случае ошибки конфигурации упасть при валидации #}
   {%- set metric_def_labels = metric_conf.label_logfield_mapping.keys() | sort | join(', ') -%}
   {%- set metric_test_expect_labels = test_conf.expect.label_values.keys() | sort | join(', ') -%}
   {%- set metric_test_labels_ok = (metric_def_labels == metric_test_expect_labels) -%}
   {% if not metric_test_labels_ok %}{# сообщение без переносов должно быть, чтобы при сбое валидации в vector было видно целиком #}
->>> AnsibleTemplateError: Ошибка при генерации кода теста из шаблона. Тест: {{ test_name }}. Должно быть полное соответствие меток в label_logfield_mapping метрики и label_values теста. Сравните: label_logfield_mapping = [{{ metric_def_labels }}] и selector[{{ selector_index}}]/test[{{test_index}}].expect.label_values = [{{ metric_test_expect_labels }}]
+  >>> AnsibleTemplateError: Ошибка при генерации кода теста из шаблона. Должно быть полное соответствие меток в {{ metric_namespace}}/{{metric_name}} label_logfield_mapping и label_values тестов. Сравните: label_logfield_mapping = [{{ metric_def_labels }}] и selector[{{ selector_index}}].testdata.test[{{test_index}}].expect.label_values = [{{ metric_test_expect_labels }}]
   {% endif %}
 
     [[tests.outputs.conditions]]
       type = "vrl"
       source = '''
+        {% for label_name, _ in metric_conf.label_logfield_mapping.items() -%}
+
         assert!(!exists(.tags.pod_name))
+
         {# проверить имя метрики и перфикса -#}
         assert_eq!(.namespace, "{{ metric_namespace }}")
         assert!(includes([{{ metrics.keys() | map('to_json') | join(', ') }}], "{{ metric_name }}"))
 
-        {% for label_name, _ in metric_conf.label_logfield_mapping.items() -%}
         {# проверяем что метрика имеет нужные label -#}
         assert!(exists(.tags.{{ label_name }}))
         {# проверить совпадения значения label метрик по label_logfield_mapping из метрики -#}
