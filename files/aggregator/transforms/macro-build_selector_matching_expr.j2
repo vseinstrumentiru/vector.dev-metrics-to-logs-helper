@@ -1,0 +1,21 @@
+{%- macro build_selector_matching_expr(event_selector, source_ref) -%}
+{%- set _conditions = [] -%}
+{%- set _field_conditions = event_selector.filter.items() -%}
+    {%- for logfield_name, operator in _field_conditions -%}
+        {%- if operator.eq is defined and operator.eq != "" -%}
+            {{ _conditions.append("(  to_string!( ." ~ logfield_name ~ " ) == \"" ~ operator.eq | replace('\"', '\\\"') ~ "\"  )") }}
+
+        {%- elif operator.neq is defined and operator.neq != "" -%}
+            {{ _conditions.append("(  to_string!( ." ~ logfield_name ~ " ) != \"" ~ operator.neq | replace('\"', '\\\"') ~ "\"  )") }}
+
+        {%- elif operator.re is defined and operator.re != "" -%}
+            {{ _conditions.append("match(  to_string!( ." ~ logfield_name ~ " ), r'" ~ operator.re | replace('\'', '\\\'') ~ "'  )") }}
+
+        {%- elif operator.nre is defined and operator.nre != "" -%}
+            {{ _conditions.append("!match(  to_string!( ." ~ logfield_name ~ " ), r'" ~ operator.nre | replace('\'', '\\\'') ~ "'  )") }}
+
+        {%- endif -%}
+    {%- endfor -%}
+
+{{ _conditions|join(" && ") }}
+{%- endmacro -%}
